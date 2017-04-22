@@ -4,8 +4,6 @@ use chunk::*;
 use world::*;
 use dude::*;
 
-use serde::ser::Serialize;
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SerialChunk {
     pub chunk: Chunk,
