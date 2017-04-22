@@ -1,0 +1,10 @@
+[package]
+name = "chunked"
+version = "0.1.0"
+authors = ["Ian Pickering <ipickering2@gmail.com>"]
+
+[dependencies]
+serde = "1.0.0"
+serde_derive = "1.0.0"
+caca = { git = "https://github.com/Ruin0x11/caca-rs" }
+bincode = { git = "https://github.com/TyOverby/bincode" }
