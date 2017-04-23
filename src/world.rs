@@ -146,6 +146,7 @@ impl World {
         };
         println!("{:?}", chunk.dudes);
 
+        println!("Loading chunk at {}", index);
         for (pos, dude) in chunk.dudes.into_iter() {
             println!("dude!");
             self.dudes.insert(pos, dude);
@@ -160,6 +161,7 @@ impl World {
             if self.chunk_loaded(index) {
                 return Err(ChunkAlreadyLoaded(index.clone()));
             }
+            println!("Addding chunk at {}", index);
             self.chunks.insert(index.clone(), Chunk::new(Cell::Floor));
         }
         Ok(())
@@ -180,6 +182,7 @@ impl World {
             None => return Err(NoChunkInWorld(index.clone())),
         };
         let dudes = self.remove_dudes_in_chunk(&index, &chunk);
+        println!("Unloading chunk at {}", index);
         let serial = SerialChunk {
             chunk: chunk,
             dudes: dudes,
@@ -233,19 +236,25 @@ impl World {
         quadrant(-1, -1, &mut relevant);
         quadrant(1,  -1, &mut relevant);
 
+        let mut d = HashSet::new();
+
         for idx in relevant.iter() {
             if !self.chunk_loaded(idx) {
                 println!("Loading chunk {}", idx);
                 self.load_or_gen_chunk(idx)?;
+                d.insert(idx.clone());
             }
         }
 
         let indices = self.chunk_indices();
         for idx in indices.iter() {
             if !relevant.contains(idx) && self.chunk_loaded(idx) {
-                println!("Unloading chunk {}", idx);
                 self.save_and_unload_chunk(idx)?;
             }
+        }
+
+        for i in d.iter() {
+            println!("{}", i);
         }
 
         Ok(())

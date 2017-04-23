@@ -3,7 +3,7 @@ use std::fmt;
 use cell::Cell;
 use point::Point;
 
-pub const CHUNK_WIDTH: i32 = 2;
+pub const CHUNK_WIDTH: i32 = 16;
 pub const CHUNK_SIZE: i32 = CHUNK_WIDTH * CHUNK_WIDTH;
 
 pub type ChunkPosition = Point;

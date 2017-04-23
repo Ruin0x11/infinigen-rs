@@ -35,7 +35,8 @@ fn main() {
 }
 
 fn go() {
-    let mut world = World::new(Point::new(128, 128));
+    // let mut world = World::new(Point::new(128, 128));
+    let mut world = World::new_empty();
     for i in 0..24 {
         world.place_dude(Point::new(i, 0));
     }

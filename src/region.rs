@@ -36,7 +36,7 @@ impl From<Box<bincode::ErrorKind>> for SerialError {
 const SECTOR_SIZE: usize = 4096;
 
 /// The number of chunks per row inside regions.
-const REGION_WIDTH: i32 = 256;
+const REGION_WIDTH: i32 = 16;
 
 /// The total number of chunks per region.
 const REGION_SIZE: i32 = REGION_WIDTH * REGION_WIDTH;
@@ -89,15 +89,24 @@ impl RegionManager {
     }
 
     fn get_region_index(chunk_index: &ChunkIndex) -> RegionIndex {
-        RegionIndex::new((chunk_index.0.x as f32 / REGION_WIDTH as f32).floor() as i32,
-                         (chunk_index.0.y as f32 / REGION_WIDTH as f32).floor() as i32)
+        let conv = |mut q: i32, d: i32| {
+            // Divide by a larger number to make sure that negative division is
+            // handled properly. Chunk index (-1, -1) should map to region index
+            // (-1, -1), but -1 / REGION_WIDTH = 0.
+            if q < 0 {
+                q -= REGION_WIDTH;
+            }
+
+            (q / d)
+        };
+        RegionIndex::new(conv(chunk_index.0.x, REGION_WIDTH),
+                         conv(chunk_index.0.y, REGION_WIDTH))
 
     }
 
     pub fn get_for_chunk(&mut self, chunk_index: &ChunkIndex) -> &mut Region {
         let region_index = RegionManager::get_region_index(chunk_index);
-        println!("region index {}", region_index);
-
+        println!("Chunk: {} Region: {}", chunk_index, region_index);
 
         self.regions.entry(region_index).or_insert(Region::load(region_index))
     }
@@ -117,8 +126,8 @@ fn pad_byte_vec(bytes: &mut Vec<u8>, size: usize) {
 
 impl Region {
     pub fn load(index: RegionIndex) -> Self {
+        println!("LOAD REGION {}", index);
         let filename = Region::get_filename(&index);
-        println!("REGION LOAD: {}", filename);
 
         let handle = Region::get_region_file(filename);
 
@@ -164,8 +173,7 @@ impl Region {
         let normalized_idx = Region::normalize_chunk_index(index);
 
         let (offset, size) = self.read_chunk_offset(&normalized_idx);
-
-        println!("WRITE: {} {:?}", offset, size);
+        println!("WRITE idx: {} offset: {} exists: {}", normalized_idx, offset, size.is_some());
 
         match size {
             Some(size) => {
@@ -177,39 +185,45 @@ impl Region {
     }
 
     fn append_chunk(&mut self, encoded: Vec<u8>, index: &RegionLocalIndex) -> Result<(), SerialError> {
-        let sector_count: u16 = (encoded.len() / SECTOR_SIZE) as u16;
+        let sector_count: u8 = (encoded.len() / SECTOR_SIZE) as u8;
 
         let new_offset = self.handle.seek(SeekFrom::End(0))?;
+        println!("APPEND idx: {} offset: {}", index, new_offset);
         self.handle.write(encoded.as_slice())?;
 
         let val = Region::create_lookup_table_entry(new_offset, sector_count);
-        self.write_chunk_offset(index, val)
+        println!("entry: {:?}", val);
+        self.write_chunk_offset(index, val)?;
+
+        let (o, v) = self.read_chunk_offset(index);
+        assert_eq!(new_offset, o, "index: {} new: {} old: {}", index, new_offset, o);
+        assert_eq!(sector_count as usize * SECTOR_SIZE, v.unwrap());
+        Ok(())
     }
 
     fn update_chunk(&mut self, encoded: Vec<u8>, byte_offset: u64) -> Result<(), SerialError> {
-        self.handle.seek(SeekFrom::Start(LOOKUP_TABLE_SIZE + byte_offset))?;
+        self.handle.seek(SeekFrom::Start(byte_offset))?;
         self.handle.write(encoded.as_slice())?;
         Ok(())
     }
 
-    fn create_lookup_table_entry(eof: u64, sector_count: u16) -> u16 {
-        let offset: u16 = (eof / SECTOR_SIZE as u64) as u16;
+    fn create_lookup_table_entry(eof: u64, sector_count: u8) -> [u8; 2] {
+        let offset: u8 = ((eof - LOOKUP_TABLE_SIZE) / SECTOR_SIZE as u64) as u8;
 
-        offset | (sector_count << 8)
+        [offset, sector_count]
     }
 
     pub fn read_chunk(&mut self, index: &ChunkIndex) -> Result<SerialChunk, SerialError> {
         let normalized_idx = Region::normalize_chunk_index(index);
         let (offset, size_opt) = self.read_chunk_offset(&normalized_idx);
+        println!("OFFSET: {}", offset);
         let size = match size_opt {
             Some(s) => s,
             None    => return Err(NoChunkInSavefile(normalized_idx.clone())),
         };
 
-        println!("READ: {} {}", offset, size);
-
-        let true_offset = LOOKUP_TABLE_SIZE + offset;
-        let buf = self.read_bytes(true_offset, size);
+        println!("READ idx: {} offset: {}", normalized_idx, offset);
+        let buf = self.read_bytes(offset, size);
 
         match bincode::deserialize(buf.as_slice()) {
             Ok(dat) => Ok(dat),
@@ -219,7 +233,6 @@ impl Region {
 
     fn read_bytes(&mut self, offset: u64, size: usize) -> Vec<u8> {
         self.handle.seek(SeekFrom::Start(offset)).unwrap();
-        println!("offset {}", offset);
         let mut buf = vec![0u8; size];
         self.handle.read(buf.as_mut_slice()).unwrap();
         buf
@@ -240,24 +253,37 @@ impl Region {
 
         // the byte offset should be u64 for Seek::seek, otherwise it will just
         // be cast every time.
-        let offset = (data[0] as usize * SECTOR_SIZE) as u64;
+        let offset = LOOKUP_TABLE_SIZE + (data[0] as usize * SECTOR_SIZE) as u64;
         let size = if data[1] == 0 {
             None
         } else {
             Some(data[1] as usize * SECTOR_SIZE)
         };
-        println!("offset: {} size: {:?}", offset, size);
+        println!("idx: {} offset: {} size: {}", index, offset, data[1]);
         (offset, size)
     }
 
-    fn write_chunk_offset(&mut self, index: &RegionLocalIndex, val: u16) -> Result<(), SerialError> {
-        println!("Write chunk offset");
+    fn write_chunk_offset(&mut self, index: &RegionLocalIndex, val: [u8; 2]) -> Result<(), SerialError> {
         // TODO: Handle negativity
         let offset = Region::get_chunk_offset(index);
         self.handle.seek(SeekFrom::Start(offset))?;
-        let mut buf: [u8; 2] = unsafe { mem::transmute(val) };
-        self.handle.write(&mut buf)?;
+        self.handle.write(&val)?;
         Ok(())
+    }
+
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_region_index() {
+        assert_eq!(RegionManager::get_region_index(&ChunkIndex::new(0, 0)), RegionIndex::new(0, 0));
+        assert_eq!(RegionManager::get_region_index(&ChunkIndex::new(0, 8)), RegionIndex::new(0, 0));
+        assert_eq!(RegionManager::get_region_index(&ChunkIndex::new(0, 17)), RegionIndex::new(0, 1));
+        assert_eq!(RegionManager::get_region_index(&ChunkIndex::new(0, 16)), RegionIndex::new(0, 1));
+        assert_eq!(RegionManager::get_region_index(&ChunkIndex::new(0, 15)), RegionIndex::new(0, 0));
+        assert_eq!(RegionManager::get_region_index(&ChunkIndex::new(0, -1)), RegionIndex::new(0, -1));
     }
 
 }
