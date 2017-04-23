@@ -1,14 +1,19 @@
-use std::collections::{hash_map, HashMap};
+use std::collections::{HashSet, hash_map, HashMap};
 use std::fs::{File, OpenOptions};
 use std::fmt;
 use std::io::{self, Seek, SeekFrom, Read, Write};
+use std::io::prelude::*;
 use std::mem;
 use std::path::Path;
-use serial_chunk::*;
-use bincode::{self, Infinite};
 
-use point::Point;
+use bincode::{self, Infinite};
+// use flate2::Compression;
+// use flate2::write::ZlibEncoder;
+// use flate2::read::ZlibDecoder;
+
 use chunk::*;
+use point::Point;
+use serial_chunk::*;
 
 pub use self::SerialError::*;
 
@@ -20,6 +25,8 @@ pub enum SerialError {
     IoError(io::Error),
     EncodingError(bincode::ErrorKind),
 }
+
+type SerialResult<T> = Result<T, SerialError>;
 
 impl From<io::Error> for SerialError {
     fn from(e: io::Error) -> SerialError {
@@ -75,6 +82,7 @@ impl fmt::Display for RegionIndex {
 
 pub struct Region {
     handle: Box<File>,
+    unsaved_chunks: HashSet<ChunkIndex>,
 }
 
 pub struct RegionManager {
@@ -108,11 +116,30 @@ impl RegionManager {
         let region_index = RegionManager::get_region_index(chunk_index);
         println!("Chunk: {} Region: {}", chunk_index, region_index);
 
-        self.regions.entry(region_index).or_insert(Region::load(region_index))
+        if !self.regions.contains_key(&region_index) {
+            self.regions.insert(region_index.clone(), Region::load(region_index));
+        }
+
+        self.regions.get_mut(&region_index).unwrap()
     }
 
     pub fn iter_mut(&mut self) -> hash_map::ValuesMut<RegionIndex, Region> {
         self.regions.values_mut()
+    }
+
+    pub fn notify_chunk_creation(&mut self, chunk_index: &ChunkIndex) {
+        let region = self.get_for_chunk(chunk_index);
+        region.receive_created_chunk(chunk_index.clone());
+    }
+
+    pub fn prune_empty(&mut self) {
+        let indices: Vec<RegionIndex> = self.regions.iter().map(|(i, _)| i).cloned().collect();
+        for idx in indices {
+            if self.regions.get(&idx).map_or(false, |r| r.is_empty()) {
+                println!("UNLOAD REGION {}", idx);
+                self.regions.remove(&idx);
+            }
+        }
     }
 }
 
@@ -124,6 +151,19 @@ fn pad_byte_vec(bytes: &mut Vec<u8>, size: usize) {
     }
 }
 
+// fn compress_data(bytes: &Vec<u8>) -> SerialResult<Vec<u8>> {
+//     let mut e = ZlibEncoder::new(Vec::new(), Compression::Default);
+//     e.write(bytes.as_slice())?;
+//     e.finish().map_err(SerialError::from)
+// }
+
+// fn decompress_data(bytes: &Vec<u8>) -> SerialResult<Vec<u8>> {
+//     let mut d = ZlibDecoder::new(bytes.as_slice());
+//     let mut buf = Vec::new();
+//     d.read(&mut buf).map_err(SerialError::from)?;
+//     Ok(buf)
+// }
+
 impl Region {
     pub fn load(index: RegionIndex) -> Self {
         println!("LOAD REGION {}", index);
@@ -133,6 +173,7 @@ impl Region {
 
         Region {
             handle: Box::new(handle),
+            unsaved_chunks: HashSet::new(),
         }
     }
 
@@ -166,9 +207,17 @@ impl Region {
         RegionLocalIndex(Point::new(conv(chunk_index.0.x), conv(chunk_index.0.y)))
     }
 
-    pub fn write_chunk(&mut self, chunk: SerialChunk, index: &ChunkIndex) -> Result<(), SerialError>{
+    pub fn write_chunk(&mut self, chunk: SerialChunk, index: &ChunkIndex) -> SerialResult<()>{
+        assert!(self.unsaved_chunks.contains(index));
+
         let mut encoded: Vec<u8> = bincode::serialize(&chunk, Infinite)?;
-        pad_byte_vec(&mut encoded, SECTOR_SIZE);
+        // FIXME: Compression makes chunk unloading nondeterministic, because
+        // there is no way to know the amount of padding added and the
+        // decompressor treats the padding as part of the file.
+
+        // let mut compressed = compress_data(&mut encoded)?;
+        let mut compressed = encoded;
+        pad_byte_vec(&mut compressed, SECTOR_SIZE);
 
         let normalized_idx = Region::normalize_chunk_index(index);
 
@@ -177,23 +226,26 @@ impl Region {
 
         match size {
             Some(size) => {
-                assert!(size >= encoded.len(), "Chunk data grew past allocated sector_count!");
-                self.update_chunk(encoded, offset)
+                assert!(size >= compressed.len(), "Chunk data grew past allocated sector_count!");
+                self.update_chunk(compressed, offset)?;
             },
-            None       => self.append_chunk(encoded, &normalized_idx),
+            None       => { self.append_chunk(compressed, &normalized_idx)?; },
         }
+        self.unsaved_chunks.remove(index);
+        Ok(())
     }
 
-    fn append_chunk(&mut self, encoded: Vec<u8>, index: &RegionLocalIndex) -> Result<(), SerialError> {
-        let sector_count: u8 = (encoded.len() / SECTOR_SIZE) as u8;
+    fn append_chunk(&mut self, chunk_data: Vec<u8>, index: &RegionLocalIndex) -> SerialResult<()> {
+        let sector_count = (chunk_data.len() as f32 / SECTOR_SIZE as f32).ceil() as u32;
+        assert!(sector_count < 256, "Sector count overflow!");
+        assert!(sector_count > 0, "Sector count zero! Len: {}", chunk_data.len());
+        let sector_count = sector_count as u8;
 
         let new_offset = self.handle.seek(SeekFrom::End(0))?;
         println!("APPEND idx: {} offset: {}", index, new_offset);
-        self.handle.write(encoded.as_slice())?;
 
-        let val = Region::create_lookup_table_entry(new_offset, sector_count);
-        println!("entry: {:?}", val);
-        self.write_chunk_offset(index, val)?;
+        self.handle.write(chunk_data.as_slice())?;
+        self.write_chunk_offset(index, new_offset, sector_count)?;
 
         let (o, v) = self.read_chunk_offset(index);
         assert_eq!(new_offset, o, "index: {} new: {} old: {}", index, new_offset, o);
@@ -201,9 +253,9 @@ impl Region {
         Ok(())
     }
 
-    fn update_chunk(&mut self, encoded: Vec<u8>, byte_offset: u64) -> Result<(), SerialError> {
+    fn update_chunk(&mut self, chunk_data: Vec<u8>, byte_offset: u64) -> SerialResult<()> {
         self.handle.seek(SeekFrom::Start(byte_offset))?;
-        self.handle.write(encoded.as_slice())?;
+        self.handle.write(chunk_data.as_slice())?;
         Ok(())
     }
 
@@ -213,7 +265,9 @@ impl Region {
         [offset, sector_count]
     }
 
-    pub fn read_chunk(&mut self, index: &ChunkIndex) -> Result<SerialChunk, SerialError> {
+    pub fn read_chunk(&mut self, index: &ChunkIndex) -> SerialResult<SerialChunk> {
+        assert!(!self.unsaved_chunks.contains(index));
+
         let normalized_idx = Region::normalize_chunk_index(index);
         let (offset, size_opt) = self.read_chunk_offset(&normalized_idx);
         println!("OFFSET: {}", offset);
@@ -225,8 +279,12 @@ impl Region {
         println!("READ idx: {} offset: {}", normalized_idx, offset);
         let buf = self.read_bytes(offset, size);
 
+        // let decompressed = decompress_data(&buf)?;
         match bincode::deserialize(buf.as_slice()) {
-            Ok(dat) => Ok(dat),
+            Ok(dat) => {
+                self.unsaved_chunks.insert(index.clone());
+                Ok(dat)
+            },
             Err(e)  => Err(SerialError::from(e)),
         }
     }
@@ -263,14 +321,24 @@ impl Region {
         (offset, size)
     }
 
-    fn write_chunk_offset(&mut self, index: &RegionLocalIndex, val: [u8; 2]) -> Result<(), SerialError> {
-        // TODO: Handle negativity
+    fn write_chunk_offset(&mut self, index: &RegionLocalIndex, new_offset: u64, sector_count: u8) -> SerialResult<()> {
+        println!("offset: {} sectors: {}", new_offset, sector_count);
+        let val = Region::create_lookup_table_entry(new_offset, sector_count);
         let offset = Region::get_chunk_offset(index);
         self.handle.seek(SeekFrom::Start(offset))?;
         self.handle.write(&val)?;
         Ok(())
     }
 
+    /// Notifies this Region that a chunk was created, so that its lifetime
+    /// should be tracked by the Region.
+    fn receive_created_chunk(&mut self, index: ChunkIndex) {
+        self.unsaved_chunks.insert(index);
+    }
+
+    fn is_empty(&self) -> bool {
+        self.unsaved_chunks.len() == 0
+    }
 }
 
 #[cfg(test)]

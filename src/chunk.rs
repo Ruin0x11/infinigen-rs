@@ -1,7 +1,10 @@
 use std::fmt;
 
+use noise::{NoiseModule, Perlin};
+
 use cell::Cell;
 use point::Point;
+use world::WorldPosition;
 
 pub const CHUNK_WIDTH: i32 = 16;
 pub const CHUNK_SIZE: i32 = CHUNK_WIDTH * CHUNK_WIDTH;
@@ -12,13 +15,27 @@ pub type ChunkPosition = Point;
 pub struct Chunk {
     cells: Vec<Cell>,
 }
+const COS_THETA: f32 = 0.99854; // Theta (rotation) of about 3.1 degrees (quite arbitrarily)
+const SIN_THETA: f32 = 0.05408;
+const NOISE_SCALE: f32 = 0.05;
 
 impl Chunk {
-    pub fn new(cell: Cell) -> Self {
+    pub fn new(index: &ChunkIndex, gen: &Perlin) -> Self {
         let mut cells = Vec::new();
+        let center = WorldPosition::from_chunk_index(*index);
 
-        for _ in 0..(CHUNK_SIZE) {
-            cells.push(cell.clone());
+            for j in 0..(CHUNK_WIDTH) {
+        for i in 0..(CHUNK_WIDTH) {
+                let ax = (center.x + i) as f32;
+                let ay = (center.y + j) as f32;
+                let conv = |a: f32, b| NOISE_SCALE * (a * COS_THETA + b * SIN_THETA);
+                let res = gen.get([conv(ay, -ax), conv(ax, ay)]);
+                if res > 0.30 {
+                    cells.push(Cell::Tree);
+                } else {
+                    cells.push(Cell::Floor);
+                }
+            }
         }
 
         Chunk {

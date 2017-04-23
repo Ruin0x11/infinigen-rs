@@ -1,5 +1,7 @@
 extern crate bincode;
 extern crate caca;
+// extern crate flate2;
+extern crate noise;
 extern crate serde;
 #[macro_use] extern crate serde_derive;
 

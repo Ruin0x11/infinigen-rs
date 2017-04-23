@@ -1,5 +1,7 @@
 use std::collections::{HashSet, hash_map, HashMap};
 
+use noise::Perlin;
+
 use cell::Cell;
 use chunk::*;
 use dude::Dude;
@@ -20,12 +22,14 @@ pub struct World {
     chunks: HashMap<ChunkIndex, Chunk>,
     dudes: HashMap<WorldPosition, Dude>,
     pub observer: WorldPosition,
+
+    gen: Perlin,
 }
 
 impl World {
     pub fn new(size: Point) -> Self {
         let mut world = World::new_empty();
-        let chunks = World::generate_chunks(size.x, size.y);
+        let chunks = World::generate_chunks(size.x, size.y, &world.gen);
         world.chunks = chunks;
         world
     }
@@ -36,10 +40,13 @@ impl World {
             chunks: HashMap::new(),
             dudes: HashMap::new(),
             observer: WorldPosition::new(0, 0),
+
+            // TODO: Save world information, seed
+            gen: Perlin::new(),
         }
     }
 
-    fn generate_chunks(width: i32, height: i32) -> HashMap<ChunkIndex, Chunk> {
+    fn generate_chunks(width: i32, height: i32, gen: &Perlin) -> HashMap<ChunkIndex, Chunk> {
         assert!(width > 0);
         assert!(height > 0);
 
@@ -51,12 +58,13 @@ impl World {
 
         for i in 0..columns {
             for j in 0..rows {
-                // let index = (j + (i * rows)) as usize;
-                chunks.insert(ChunkIndex::new(i, j), Chunk::new(Cell::Floor));
+                let index = ChunkIndex::new(i, j);
+                chunks.insert(index, Chunk::new(&index, gen));
             }
         }
         chunks
     }
+
 
     pub fn chunk_from_world_pos(&self, pos: WorldPosition) -> Option<&Chunk> {
         let index = ChunkIndex::from_world_pos(pos);
@@ -162,7 +170,11 @@ impl World {
                 return Err(ChunkAlreadyLoaded(index.clone()));
             }
             println!("Addding chunk at {}", index);
-            self.chunks.insert(index.clone(), Chunk::new(Cell::Floor));
+            self.chunks.insert(index.clone(), Chunk::new(index, &self.gen));
+
+            // The region this chunk was created in needs to know of the chunk
+            // that was created in-game but nonexistent on disk.
+            self.regions.notify_chunk_creation(index);
         }
         Ok(())
     }
@@ -236,13 +248,10 @@ impl World {
         quadrant(-1, -1, &mut relevant);
         quadrant(1,  -1, &mut relevant);
 
-        let mut d = HashSet::new();
-
         for idx in relevant.iter() {
             if !self.chunk_loaded(idx) {
                 println!("Loading chunk {}", idx);
                 self.load_or_gen_chunk(idx)?;
-                d.insert(idx.clone());
             }
         }
 
@@ -253,9 +262,7 @@ impl World {
             }
         }
 
-        for i in d.iter() {
-            println!("{}", i);
-        }
+        self.regions.prune_empty();
 
         Ok(())
     }
