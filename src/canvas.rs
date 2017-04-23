@@ -23,17 +23,19 @@ pub fn print(world: &mut World) {
             canvas.clear();
             canvas.set_color_ansi(&AnsiColor::LightGray, &AnsiColor::Black);
 
-            let center = world.observer;
-
             let size = Point::new(80, 40);
+            let center = world.observer - size/2;
+
             world.with_cells(center, size, |p: Point, c: &Cell| {
                                  canvas.put_char(p.x - center.x, p.y - center.y, c.to_char());
                              } );
 
             for dude in world.dudes() {
-                let pos = center + dude.pos();
+                let pos = dude.pos() - center;
                 canvas.put_char(pos.x, pos.y, dude.appearance);
             }
+
+            canvas.put_char(size.x / 2, size.y / 2, '@');
         }
         d.set_display_time(Duration::new(30, 10000));
         d.refresh();

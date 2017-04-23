@@ -36,7 +36,7 @@ impl From<Box<bincode::ErrorKind>> for SerialError {
 const SECTOR_SIZE: usize = 4096;
 
 /// The number of chunks per row inside regions.
-const REGION_WIDTH: i32 = 16;
+const REGION_WIDTH: i32 = 256;
 
 /// The total number of chunks per region.
 const REGION_SIZE: i32 = REGION_WIDTH * REGION_WIDTH;
@@ -89,13 +89,15 @@ impl RegionManager {
     }
 
     fn get_region_index(chunk_index: &ChunkIndex) -> RegionIndex {
-        RegionIndex::new((chunk_index.0.x as f32 / CHUNK_WIDTH as f32).floor() as i32,
-                         (chunk_index.0.y as f32 / CHUNK_WIDTH as f32).floor() as i32)
+        RegionIndex::new((chunk_index.0.x as f32 / REGION_WIDTH as f32).floor() as i32,
+                         (chunk_index.0.y as f32 / REGION_WIDTH as f32).floor() as i32)
 
     }
 
     pub fn get_for_chunk(&mut self, chunk_index: &ChunkIndex) -> &mut Region {
         let region_index = RegionManager::get_region_index(chunk_index);
+        println!("region index {}", region_index);
+
 
         self.regions.entry(region_index).or_insert(Region::load(region_index))
     }
@@ -116,6 +118,7 @@ fn pad_byte_vec(bytes: &mut Vec<u8>, size: usize) {
 impl Region {
     pub fn load(index: RegionIndex) -> Self {
         let filename = Region::get_filename(&index);
+        println!("REGION LOAD: {}", filename);
 
         let handle = Region::get_region_file(filename);
 

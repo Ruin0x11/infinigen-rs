@@ -49,10 +49,10 @@ fn go() {
             match event {
                 Event::KeyPress(key)  => match key {
                     caca::Key::Escape => {world.save().unwrap(); return;},
-                    caca::Key::Up     => {world.observer.y += 1; break;},
-                    caca::Key::Down   => {world.observer.y -= 1; break;},
-                    caca::Key::Left   => {world.observer.x += 1; break;},
-                    caca::Key::Right  => {world.observer.x -= 1; break;},
+                    caca::Key::Up     => {world.observer.y -= 1; break;},
+                    caca::Key::Down   => {world.observer.y += 1; break;},
+                    caca::Key::Left   => {world.observer.x -= 1; break;},
+                    caca::Key::Right  => {world.observer.x += 1; break;},
                     _                 => break,
                 },
                 _ => (),

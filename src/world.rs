@@ -11,7 +11,7 @@ pub type WorldPosition = Point;
 
 impl WorldPosition {
     pub fn from_chunk_index(index: ChunkIndex) -> Point {
-        Point::new(index.0.x * CHUNK_SIZE, index.0.y * CHUNK_SIZE)
+        Point::new(index.0.x * CHUNK_WIDTH, index.0.y * CHUNK_WIDTH)
     }
 }
 
@@ -46,8 +46,8 @@ impl World {
         let mut chunks = HashMap::new();
 
         let ceiling = |q: i32, d: i32| (q + d - 1) / d;
-        let columns = ceiling(width, CHUNK_SIZE);
-        let rows = ceiling(height, CHUNK_SIZE);
+        let columns = ceiling(width, CHUNK_WIDTH);
+        let rows = ceiling(height, CHUNK_WIDTH);
 
         for i in 0..columns {
             for j in 0..rows {
@@ -97,7 +97,6 @@ impl World {
                 {
                     chunk_index = ChunkIndex::from_world_pos(world_pos);
                     let chunk_opt = self.chunk_from_world_pos(world_pos);
-                    println!("idx: {} - {}", chunk_index, chunk_opt.is_some());
                     if let Some(chunk) = chunk_opt {
                         for (chunk_pos, cell) in chunk.iter() {
                             let cell_world_pos = chunk.world_position(&chunk_index, &chunk_pos);
@@ -107,9 +106,9 @@ impl World {
                         }
                     }
                 }
-                world_pos.x += CHUNK_SIZE;
+                world_pos.x += CHUNK_WIDTH;
             }
-            world_pos.y += CHUNK_SIZE;
+            world_pos.y += CHUNK_WIDTH;
             world_pos.x = starter_chunk_x;
         }
 

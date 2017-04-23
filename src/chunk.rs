@@ -3,7 +3,7 @@ use std::fmt;
 use cell::Cell;
 use point::Point;
 
-pub const CHUNK_WIDTH: i32 = 8;
+pub const CHUNK_WIDTH: i32 = 2;
 pub const CHUNK_SIZE: i32 = CHUNK_WIDTH * CHUNK_WIDTH;
 
 pub type ChunkPosition = Point;
@@ -17,7 +17,7 @@ impl Chunk {
     pub fn new(cell: Cell) -> Self {
         let mut cells = Vec::new();
 
-        for _ in 0..(CHUNK_SIZE * CHUNK_SIZE) {
+        for _ in 0..(CHUNK_SIZE) {
             cells.push(cell.clone());
         }
 
@@ -31,13 +31,13 @@ impl Chunk {
     pub fn chunk_point(&self, pos: Point) -> ChunkPosition {
         assert!(pos.x >= 0);
         assert!(pos.y >= 0);
-        assert!(pos.x < CHUNK_SIZE);
-        assert!(pos.y < CHUNK_SIZE);
+        assert!(pos.x < CHUNK_WIDTH);
+        assert!(pos.y < CHUNK_WIDTH);
         ChunkPosition::new(pos.x, pos.y)
     }
 
     fn index(&self, pos: ChunkPosition) -> usize {
-        (pos.y * CHUNK_SIZE + pos.x) as usize
+        (pos.y * CHUNK_WIDTH + pos.x) as usize
     }
 
     /// Gets an immutable cell reference relative to within this Chunk.
@@ -54,13 +54,13 @@ impl Chunk {
 
     /// Calculates the position in the world the point in the chunk represents.
     pub fn world_position(&self, index: &ChunkIndex, pos: &ChunkPosition) -> Point {
-        Point::new(pos.x + index.0.x * CHUNK_SIZE, pos.y + index.0.y * CHUNK_SIZE)
+        Point::new(pos.x + index.0.x * CHUNK_WIDTH, pos.y + index.0.y * CHUNK_WIDTH)
     }
 
     pub fn iter(&self) -> Cells {
         Cells {
             index: 0,
-            width: CHUNK_SIZE,
+            width: CHUNK_WIDTH,
             inner: self.cells.iter(),
         }
     }
@@ -102,11 +102,11 @@ impl ChunkIndex {
     pub fn from_world_pos(pos: Point) -> ChunkIndex {
         let conv = |i: i32| {
             if i < 0 {
-                // [-1, -chunk_size] = -1
-                ((i + 1) / CHUNK_SIZE) - 1
+                // [-1, -chunk_width] = -1
+                ((i + 1) / CHUNK_WIDTH) - 1
             } else {
-                // [0, chunk_size-1] = 0
-                i / CHUNK_SIZE
+                // [0, chunk_width-1] = 0
+                i / CHUNK_WIDTH
             }
         };
 
