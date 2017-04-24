@@ -13,6 +13,16 @@ pub const CHUNK_WIDTH: i32 = 16;
 #[derive(Debug, Clone)]
 pub struct ChunkPosition(pub Point);
 
+impl From<Point> for ChunkPosition {
+    fn from(pos: Point) -> ChunkPosition {
+        assert!(pos.x >= 0);
+        assert!(pos.y >= 0);
+        assert!(pos.x < CHUNK_WIDTH);
+        assert!(pos.y < CHUNK_WIDTH);
+        ChunkPosition(pos)
+    }
+}
+
 impl ChunkPosition {
     pub fn from_world(pos: &WorldPosition) -> ChunkPosition {
         let conv = |i: i32| {
@@ -65,16 +75,6 @@ impl Chunk {
         }
     }
 
-    /// Converts a regular Point into a ChunkPosition.
-    /// The Point must be within the size of the Chunk.
-    pub fn chunk_point(&self, pos: Point) -> ChunkPosition {
-        assert!(pos.x >= 0);
-        assert!(pos.y >= 0);
-        assert!(pos.x < CHUNK_WIDTH);
-        assert!(pos.y < CHUNK_WIDTH);
-        ChunkPosition(pos)
-    }
-
     fn index(&self, pos: ChunkPosition) -> usize {
         (pos.0.y * CHUNK_WIDTH + pos.0.x) as usize
     }
@@ -92,7 +92,7 @@ impl Chunk {
     }
 
     /// Calculates the position in the world the point in the chunk represents.
-    pub fn world_position(&self, index: &ChunkIndex, pos: &ChunkPosition) -> Point {
+    pub fn world_position_at(index: &ChunkIndex, pos: &ChunkPosition) -> Point {
         Point::new(pos.0.x + index.0.x * CHUNK_WIDTH, pos.0.y + index.0.y * CHUNK_WIDTH)
     }
 

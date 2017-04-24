@@ -1,26 +1,15 @@
+use std::hash::Hash;
 use std::io::prelude::*;
-use std::io::SeekFrom;
-use std::fs::{File, OpenOptions};
-use std::path::Path;
 
-use bincode::{self, Infinite};
 use serde::Serialize;
 use serde::de::Deserialize;
 
 use managed_region::ManagedRegion;
 use region::*;
 
-pub trait Index {
+pub trait Index: Hash + Eq + PartialEq + Clone {
     fn x(&self) -> i32;
     fn y(&self) -> i32;
-}
-
-/// Pads the given byte vec with zeroes to the next multiple of the given sector
-/// size.
-fn pad_byte_vec(bytes: &mut Vec<u8>, size: usize) {
-    for _ in 0..(size - (bytes.len() % size)) {
-        bytes.push(0);
-    }
 }
 
 pub trait Chunked<'a, H, I, C, R>

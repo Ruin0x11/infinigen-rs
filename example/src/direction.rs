@@ -1,5 +1,7 @@
 use std::ops::Add;
 
+use rand::{self, Rng};
+
 use point::Point;
 
 pub static DIRECTIONS: [Direction; 8] = [Direction::N,
@@ -51,6 +53,10 @@ impl Direction {
             (1,  -1) => Some(Direction::NE),
             _        => None,
         }
+    }
+
+    pub fn choose8() -> Direction {
+        rand::thread_rng().choose(&DIRECTIONS).unwrap().clone()
     }
 
     pub fn from_neighbors(from: Point, to: Point) -> Option<Direction> {

@@ -3,69 +3,12 @@ use std::fs::File;
 
 use noise::{Perlin, Seedable};
 use infinigen::*;
-use serde::Serialize;
-use serde::de::Deserialize;
 
 use cell::Cell;
 use chunk::*;
+use direction::Direction;
 use dude::Dude;
 use point::Point;
-
-pub struct MyRegion {
-    pub handle: Box<File>,
-    pub unsaved_chunks: HashSet<ChunkIndex>,
-}
-
-// fn compress_data(bytes: &Vec<u8>) -> SerialResult<Vec<u8>> {
-//     let mut e = ZlibEncoder::new(Vec::new(), Compression::Default);
-//     e.write(bytes.as_slice())?;
-//     e.finish().map_err(SerialError::from)
-// }
-
-// fn decompress_data(bytes: &Vec<u8>) -> SerialResult<Vec<u8>> {
-//     let mut d = ZlibDecoder::new(bytes.as_slice());
-//     let mut buf = Vec::new();
-//     d.read(&mut buf).map_err(SerialError::from)?;
-//     Ok(buf)
-// }
-
-impl<'a, C: Serialize + Deserialize> ManagedRegion<'a, C, File, ChunkIndex> for MyRegion {
-    fn handle(&mut self) -> &mut File {
-        &mut self.handle
-    }
-
-    fn mark_as_saved(&mut self, index: &ChunkIndex) {
-        self.unsaved_chunks.remove(index);
-    }
-
-    fn mark_as_unsaved(&mut self, index: &ChunkIndex) {
-        self.unsaved_chunks.insert(index.clone());
-    }
-
-    fn chunk_unsaved(&self, index: &ChunkIndex) -> bool {
-        self.unsaved_chunks.contains(index)
-    }
-
-    fn receive_created_chunk(&mut self, index: &ChunkIndex) {
-        self.unsaved_chunks.insert(index.clone());
-    }
-
-    fn is_empty(&self) -> bool {
-        self.unsaved_chunks.len() == 0
-    }
-}
-
-pub struct RegionManager {
-    regions: HashMap<RegionIndex, MyRegion>,
-}
-
-impl RegionManager {
-    pub fn new() -> Self {
-        RegionManager {
-            regions: HashMap::new(),
-        }
-    }
-}
 
 // TODO: Is there some way of using AsRef here instead, because we don't care
 // about the underlying 2D point struct?
@@ -78,15 +21,15 @@ pub fn get_filename(index: &RegionIndex) -> String {
     format!("r.{}.{}.sr", index.0, index.1)
 }
 
-impl<'a> Manager<'a, SerialChunk, File, ChunkIndex, MyRegion> for RegionManager
-    where MyRegion: ManagedRegion<'a, SerialChunk, File, ChunkIndex>{
-    fn load(&self, index: RegionIndex) -> MyRegion {
+impl<'a> Manager<'a, SerialChunk, File, ChunkIndex, Region<ChunkIndex>> for RegionManager<ChunkIndex>
+    where Region<ChunkIndex>: ManagedRegion<'a, SerialChunk, File, ChunkIndex>{
+    fn load(&self, index: RegionIndex) -> Region<ChunkIndex> {
         // println!("LOAD REGION {}", index);
         let filename = get_filename(&index);
 
-        let handle = MyRegion::get_region_file(filename);
+        let handle = Region::get_region_file(filename);
 
-        MyRegion {
+        Region {
             handle: Box::new(handle),
             unsaved_chunks: HashSet::new(),
         }
@@ -95,15 +38,15 @@ impl<'a> Manager<'a, SerialChunk, File, ChunkIndex, MyRegion> for RegionManager
     fn prune_empty(&mut self) {
         let indices: Vec<RegionIndex> = self.regions.iter().map(|(i, _)| i).cloned().collect();
         for idx in indices {
-            if self.regions.get(&idx).map_or(false, |r: &MyRegion| r.is_empty()) {
+            if self.regions.get(&idx).map_or(false, |r: &Region<ChunkIndex>| r.is_empty()) {
                 // println!("UNLOAD REGION {}", idx);
                 self.regions.remove(&idx);
             }
         }
     }
 
-    fn get_for_chunk(&mut self, chunk_index: &ChunkIndex) -> &mut MyRegion {
-        let region_index = MyRegion::get_region_index(chunk_index);
+    fn get_for_chunk(&mut self, chunk_index: &ChunkIndex) -> &mut Region<ChunkIndex> {
+        let region_index = Region::get_region_index(chunk_index);
 
         if !self.regions.contains_key(&region_index) {
             let region = self.load(region_index);
@@ -123,7 +66,7 @@ impl WorldPosition {
 }
 
 pub struct World {
-    regions: RegionManager,
+    regions: RegionManager<ChunkIndex>,
     chunks: HashMap<ChunkIndex, Chunk>,
     dudes: HashMap<WorldPosition, Dude>,
     pub observer: WorldPosition,
@@ -184,6 +127,13 @@ impl World {
         }
     }
 
+    pub fn can_walk(&self, pos: &WorldPosition) -> bool {
+        let cell_walkable = self.cell(pos).map_or(false, |c| c.can_walk());
+        let no_dude = self.dudes.get(pos).is_none();
+        let no_player = self.observer != *pos;
+        cell_walkable && no_dude && no_player
+    }
+
     /// Return an iterator over `Cell` that covers a rectangular shape
     /// specified by the top-left (inclusive) point and the dimensions
     /// (width, height) of the rectangle.
@@ -207,7 +157,7 @@ impl World {
                     let chunk_opt = self.chunk_from_world_pos(world_pos);
                     if let Some(chunk) = chunk_opt {
                         for (chunk_pos, cell) in chunk.iter() {
-                            let cell_world_pos = chunk.world_position(&chunk_index, &chunk_pos);
+                            let cell_world_pos = Chunk::world_position_at(&chunk_index, &chunk_pos);
                             if cell_world_pos >= top_left && cell_world_pos < bottom_right {
                                 callback(cell_world_pos, cell);
                             }
@@ -236,12 +186,30 @@ impl World {
     {
         let mut dudes = HashMap::new();
         for (chunk_pos, _) in chunk.iter() {
-            let cell_world_pos = chunk.world_position(chunk_index, &chunk_pos);
+            let cell_world_pos = Chunk::world_position_at(chunk_index, &chunk_pos);
             if let Some(dude) = self.dudes.remove(&cell_world_pos) {
                 dudes.insert(cell_world_pos, dude);
             }
         }
         dudes
+    }
+
+    pub fn step_dudes(&mut self) {
+        // Not using id-based entities is painful.
+        let mut actions: Vec<(WorldPosition, WorldPosition)> = Vec::new();
+        for pos in self.dudes.keys() {
+            let dir = Direction::choose8();
+            let new_pos = *pos + dir;
+            if self.can_walk(&new_pos) {
+                actions.push((pos.clone(), new_pos));
+            }
+        }
+
+        for (pos, new_pos) in actions {
+            let mut dude = self.dudes.remove(&pos).unwrap();
+            dude.pos = new_pos.clone();
+            self.dudes.insert(new_pos, dude);
+        }
     }
 }
 
@@ -279,7 +247,7 @@ impl World {
 
 const UPDATE_RADIUS: i32 = 3;
 
-impl<'a> Chunked<'a, File, ChunkIndex, SerialChunk, MyRegion> for World {
+impl<'a> Chunked<'a, File, ChunkIndex, SerialChunk, Region<ChunkIndex>> for World {
     fn load_chunk(&mut self, index: &ChunkIndex) -> Result<(), SerialError> {
         if let Err(_) = self.load_chunk_from_save(index) {
             if self.chunk_loaded(index) {
@@ -287,6 +255,16 @@ impl<'a> Chunked<'a, File, ChunkIndex, SerialChunk, MyRegion> for World {
             }
             // println!("Addding chunk at {}", index);
             self.chunks.insert(index.clone(), Chunk::new(index, &self.gen));
+
+            for i in 4..8 {
+                for j in 4..8 {
+                    let chunk_pos = ChunkPosition::from(Point::new(i, j));
+                    let cell_pos = Chunk::world_position_at(&index, &chunk_pos);
+                    if self.can_walk(&cell_pos) {
+                        self.place_dude(cell_pos);
+                    }
+                }
+            }
 
             // The region this chunk was created in needs to know of the chunk
             // that was created in-game but nonexistent on disk.

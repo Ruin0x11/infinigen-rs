@@ -1,6 +1,7 @@
 extern crate infinigen;
 extern crate noise;
 extern crate pancurses;
+extern crate rand;
 extern crate serde;
 #[macro_use] extern crate serde_derive;
 
@@ -18,7 +19,6 @@ use pancurses::Input;
 
 use cell::Cell;
 use direction::Direction;
-use point::Point;
 use world::World;
 
 fn main() {
@@ -29,9 +29,6 @@ fn main() {
 fn go() {
     // let mut world = World::new(Point::new(128, 128));
     let mut world = World::new_empty();
-    for i in 0..24 {
-        world.place_dude(Point::new(i, 0));
-    }
 
     loop {
         world.update_chunks().unwrap();
@@ -40,21 +37,30 @@ fn go() {
         let event = canvas::get_event().unwrap();
         match event {
             Input::Character('q') => { world.save().unwrap(); return; },
+            Input::KeyUp |
             Input::Character('k') => { try_step(&mut world, Direction::N) },
+            Input::KeyDown |
             Input::Character('j') => { try_step(&mut world, Direction::S) },
+            Input::KeyLeft |
             Input::Character('h') => { try_step(&mut world, Direction::W) },
+            Input::KeyRight |
             Input::Character('l') => { try_step(&mut world, Direction::E) },
+            Input::Character('t') => { try_step(&mut world, Direction::NW) },
+            Input::Character('y') => { try_step(&mut world, Direction::NE) },
+            Input::Character('b') => { try_step(&mut world, Direction::SW) },
+            Input::Character('n') => { try_step(&mut world, Direction::SE) },
             _                     => (),
         }
+
+        world.step_dudes();
     }
 }
 
 fn try_step(world: &mut World, dir: Direction) {
     let new_pos = world.observer + dir;
-    let can_walk = world.cell_mut(&new_pos).map_or(false, |c| c.can_walk());
-    if !can_walk {
-        world.cell_mut(&new_pos).map(|c| *c = Cell::Floor);
-    } else {
+    if world.can_walk(&new_pos) {
         world.observer = new_pos;
+    } else if !world.cell(&new_pos).map_or(false, |c| c.can_walk()) {
+        world.cell_mut(&new_pos).map(|c| *c = Cell::Floor);
     }
 }

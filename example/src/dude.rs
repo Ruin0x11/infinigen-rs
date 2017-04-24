@@ -2,7 +2,7 @@ use world::WorldPosition;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Dude {
-    pos: WorldPosition,
+    pub pos: WorldPosition,
     pub appearance: char,
     pub name: String,
 }

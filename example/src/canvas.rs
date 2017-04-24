@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use pancurses;
 
 use cell::Cell;
@@ -15,6 +13,7 @@ pub fn get_event() -> Option<pancurses::Input> {
 pub fn print(world: &mut World) {
     instance::with_mut(|w| {
         {
+            pancurses::curs_set(0);
             w.erase();
 
             let size = Point::new(w.get_max_x(), w.get_max_y());

@@ -1,7 +1,13 @@
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::io;
+use std::fs::File;
 
 use bincode;
+use serde::{Serialize, Deserialize};
+
+use traits::Index;
+use managed_region::ManagedRegion;
 
 pub use self::SerialError::*;
 
@@ -43,6 +49,63 @@ pub struct RegionIndex(pub i32, pub i32);
 impl fmt::Display for RegionIndex {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.0)
+    }
+}
+
+
+pub struct Region<I: Index> {
+    pub handle: Box<File>,
+    pub unsaved_chunks: HashSet<I>,
+}
+
+// fn compress_data(bytes: &Vec<u8>) -> SerialResult<Vec<u8>> {
+//     let mut e = ZlibEncoder::new(Vec::new(), Compression::Default);
+//     e.write(bytes.as_slice())?;
+//     e.finish().map_err(SerialError::from)
+// }
+
+// fn decompress_data(bytes: &Vec<u8>) -> SerialResult<Vec<u8>> {
+//     let mut d = ZlibDecoder::new(bytes.as_slice());
+//     let mut buf = Vec::new();
+//     d.read(&mut buf).map_err(SerialError::from)?;
+//     Ok(buf)
+// }
+
+impl<'a, I: Index, C: Serialize + Deserialize> ManagedRegion<'a, C, File, I> for Region<I> {
+    fn handle(&mut self) -> &mut File {
+        &mut self.handle
+    }
+
+    fn mark_as_saved(&mut self, index: &I) {
+        self.unsaved_chunks.remove(index);
+    }
+
+    fn mark_as_unsaved(&mut self, index: &I) {
+        self.unsaved_chunks.insert(index.clone());
+    }
+
+    fn chunk_unsaved(&self, index: &I) -> bool {
+        self.unsaved_chunks.contains(index)
+    }
+
+    fn receive_created_chunk(&mut self, index: &I) {
+        self.unsaved_chunks.insert(index.clone());
+    }
+
+    fn is_empty(&self) -> bool {
+        self.unsaved_chunks.len() == 0
+    }
+}
+
+pub struct RegionManager<I: Index> {
+    pub regions: HashMap<RegionIndex, Region<I>>,
+}
+
+impl<I: Index> RegionManager<I> {
+    pub fn new() -> Self {
+        RegionManager {
+            regions: HashMap::new(),
+        }
     }
 }
 

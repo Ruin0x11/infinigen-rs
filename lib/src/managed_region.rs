@@ -20,7 +20,7 @@ fn pad_byte_vec(bytes: &mut Vec<u8>, size: usize) {
 
 pub trait ManagedRegion<'a, C, H, I: Index>
     where H: Seek + Write + Read,
-          C: Serialize + Deserialize{
+          C: Serialize + Deserialize {
 
     const SECTOR_SIZE: usize = 4096;
 
@@ -86,7 +86,6 @@ pub trait ManagedRegion<'a, C, H, I: Index>
     }
 
     fn write_chunk(&mut self, chunk: C, index: &I) -> SerialResult<()>{
-        let i = index.clone().into();
         assert!(self.chunk_unsaved(index));
 
         let encoded: Vec<u8> = bincode::serialize(&chunk, Infinite)?;
@@ -98,7 +97,7 @@ pub trait ManagedRegion<'a, C, H, I: Index>
         let mut compressed = encoded;
         pad_byte_vec(&mut compressed, Self::SECTOR_SIZE);
 
-        let normalized_idx = self.normalize_chunk_index(i);
+        let normalized_idx = self.normalize_chunk_index(index);
 
         let (offset, size) = self.read_chunk_offset(&normalized_idx);
         // println!("WRITE idx: {} offset: {} exists: {}", normalized_idx, offset, size.is_some());
