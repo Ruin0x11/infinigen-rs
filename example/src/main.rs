@@ -1,24 +1,29 @@
 extern crate infinigen;
-extern crate caca;
 extern crate noise;
+extern crate pancurses;
 extern crate serde;
 #[macro_use] extern crate serde_derive;
 
 #[macro_use] mod macros;
-mod world;
-mod dude;
 mod canvas;
 mod cell;
 mod chunk;
+mod direction;
+mod dude;
 mod point;
+mod world;
 
+use infinigen::Chunked;
+use pancurses::Input;
+
+use cell::Cell;
+use direction::Direction;
 use point::Point;
 use world::World;
-use caca::Event;
-use infinigen::Chunked;
 
 fn main() {
     go();
+    canvas::endwin();
 }
 
 fn go() {
@@ -32,19 +37,24 @@ fn go() {
         world.update_chunks().unwrap();
         canvas::print(&mut world);
 
-        loop {
-            let event = canvas::get_event().unwrap();
-            match event {
-                Event::KeyPress(key)  => match key {
-                    caca::Key::Escape => {world.save().unwrap(); return;},
-                    caca::Key::Up     => {world.observer.y -= 1; break;},
-                    caca::Key::Down   => {world.observer.y += 1; break;},
-                    caca::Key::Left   => {world.observer.x -= 1; break;},
-                    caca::Key::Right  => {world.observer.x += 1; break;},
-                    _                 => break,
-                },
-                _ => (),
-            }
+        let event = canvas::get_event().unwrap();
+        match event {
+            Input::Character('q') => { world.save().unwrap(); return; },
+            Input::Character('k') => { try_step(&mut world, Direction::N) },
+            Input::Character('j') => { try_step(&mut world, Direction::S) },
+            Input::Character('h') => { try_step(&mut world, Direction::W) },
+            Input::Character('l') => { try_step(&mut world, Direction::E) },
+            _                     => (),
         }
+    }
+}
+
+fn try_step(world: &mut World, dir: Direction) {
+    let new_pos = world.observer + dir;
+    let can_walk = world.cell_mut(&new_pos).map_or(false, |c| c.can_walk());
+    if !can_walk {
+        world.cell_mut(&new_pos).map(|c| *c = Cell::Floor);
+    } else {
+        world.observer = new_pos;
     }
 }

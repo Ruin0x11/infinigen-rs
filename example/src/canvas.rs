@@ -1,44 +1,40 @@
 use std::time::Duration;
 
-use caca::{self, AnsiColor};
+use pancurses;
 
 use cell::Cell;
 use world::World;
 use point::Point;
 
-make_global!(DISPLAY, caca::Display, make_display(80, 40));
+make_global!(WINDOW, pancurses::Window, pancurses::initscr());
 
-pub fn get_event() -> Option<caca::Event> {
-    instance::with(|d| d.poll_event(caca::EVENT_ANY.bits()))
+pub fn get_event() -> Option<pancurses::Input> {
+    instance::with(|w| w.getch())
 }
 
 pub fn print(world: &mut World) {
-    instance::with_mut(|d| {
+    instance::with_mut(|w| {
         {
-            let mut canvas = d.canvas();
-            canvas.clear();
-            canvas.set_color_ansi(&AnsiColor::LightGray, &AnsiColor::Black);
+            w.erase();
 
-            let size = Point::new(80, 40);
+            let size = Point::new(w.get_max_x(), w.get_max_y());
             let center = world.observer - size/2;
 
             world.with_cells(center, size, |p: Point, c: &Cell| {
-                                 canvas.put_char(p.x - center.x, p.y - center.y, c.to_char());
+                                 w.mvaddch(p.y - center.y, p.x - center.x, c.to_char());
                              } );
 
             for dude in world.dudes() {
                 let pos = dude.pos() - center;
-                canvas.put_char(pos.x, pos.y, dude.appearance);
+                w.mvaddch(pos.y, pos.x, dude.appearance);
             }
 
-            canvas.put_char(size.x / 2, size.y / 2, '@');
+            w.mvaddch(size.y/2, size.x/2, '@');
         }
-        d.set_display_time(Duration::new(30, 10000)).unwrap();
-        d.refresh();
+        w.refresh()
     });
 }
 
-fn make_display(w: i32, h: i32) -> caca::Display {
-    let canvas = caca::Canvas::new(w, h).unwrap();
-    caca::Display::new(caca::InitOptions{ canvas: Some(&canvas), .. caca::InitOptions::default()}).unwrap()
+pub fn endwin() {
+    pancurses::endwin();
 }

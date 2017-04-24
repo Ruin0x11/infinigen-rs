@@ -89,7 +89,7 @@ pub fn get_filename(index: &RegionIndex) -> String {
 impl<'a> Manager<'a, SerialChunk, File, ChunkIndex, MyRegion> for RegionManager
     where MyRegion: ManagedRegion<'a, SerialChunk, File, ChunkIndex>{
     fn load(&self, index: RegionIndex) -> MyRegion {
-        println!("LOAD REGION {}", index);
+        // println!("LOAD REGION {}", index);
         let filename = get_filename(&index);
 
         let handle = MyRegion::get_region_file(filename);
@@ -104,12 +104,11 @@ impl<'a> Manager<'a, SerialChunk, File, ChunkIndex, MyRegion> for RegionManager
         let indices: Vec<RegionIndex> = self.regions.iter().map(|(i, _)| i).cloned().collect();
         for idx in indices {
             if self.regions.get(&idx).map_or(false, |r: &MyRegion| r.is_empty()) {
-                println!("UNLOAD REGION {}", idx);
+                // println!("UNLOAD REGION {}", idx);
                 self.regions.remove(&idx);
             }
         }
     }
-
 
     fn get_for_chunk(&mut self, chunk_index: &ChunkIndex) -> &mut MyRegion {
         let region_index = MyRegion::get_region_index(chunk_index);
@@ -158,8 +157,39 @@ impl World {
         self.chunk(index)
     }
 
+    pub fn chunk_mut_from_world_pos(&mut self, pos: WorldPosition) -> Option<&mut Chunk> {
+        let index = ChunkIndex::from_world_pos(pos);
+        self.chunk_mut(index)
+    }
+
     pub fn chunk(&self, index: ChunkIndex) -> Option<&Chunk> {
         self.chunks.get(&index)
+    }
+
+    pub fn chunk_mut(&mut self, index: ChunkIndex) -> Option<&mut Chunk> {
+        self.chunks.get_mut(&index)
+    }
+
+    pub fn cell(&self, world_pos: &WorldPosition) -> Option<&Cell> {
+        let chunk_pos = ChunkPosition::from_world(world_pos);
+        let chunk_opt = self.chunk_from_world_pos(*world_pos);
+        match chunk_opt {
+            Some(chunk) => {
+                Some(chunk.cell(chunk_pos))
+            },
+            None => None,
+        }
+    }
+
+    pub fn cell_mut(&mut self, world_pos: &WorldPosition) -> Option<&mut Cell> {
+        let chunk_pos = ChunkPosition::from_world(world_pos);
+        let chunk_opt = self.chunk_mut_from_world_pos(*world_pos);
+        match chunk_opt {
+            Some(chunk) => {
+                Some(chunk.cell_mut(chunk_pos))
+            }
+            None => None,
+        }
     }
 
     /// Return an iterator over `Cell` that covers a rectangular shape
@@ -230,9 +260,9 @@ impl World {
             Ok(c) => c,
             Err(e) => return Err(e),
         };
-        println!("Loading chunk at {}", index);
+        // println!("Loading chunk at {}", index);
         for (pos, dude) in chunk.dudes.into_iter() {
-            println!("dude!");
+            // println!("dude!");
             self.dudes.insert(pos, dude);
         }
         self.chunks.insert(index.clone(), chunk.chunk);
@@ -246,7 +276,7 @@ impl World {
             None => return Err(NoChunkInWorld(index.0.x, index.0.y)),
         };
         let dudes = self.remove_dudes_in_chunk(&index, &chunk);
-        println!("Unloading chunk at {}", index);
+        // println!("Unloading chunk at {}", index);
         let serial = SerialChunk {
             chunk: chunk,
             dudes: dudes,
@@ -263,7 +293,7 @@ impl<'a> Chunked<'a, File, ChunkIndex, SerialChunk, MyRegion> for World {
             if self.chunk_loaded(index) {
                 return Err(ChunkAlreadyLoaded(index.0.x, index.0.y));
             }
-            println!("Addding chunk at {}", index);
+            // println!("Addding chunk at {}", index);
             self.chunks.insert(index.clone(), Chunk::new(index, &self.gen));
 
             // The region this chunk was created in needs to know of the chunk
@@ -311,7 +341,7 @@ impl<'a> Chunked<'a, File, ChunkIndex, SerialChunk, MyRegion> for World {
 
         for idx in relevant.iter() {
             if !self.chunk_loaded(idx) {
-                println!("Loading chunk {}", idx);
+                // println!("Loading chunk {}", idx);
                 self.load_chunk(idx)?;
             }
         }

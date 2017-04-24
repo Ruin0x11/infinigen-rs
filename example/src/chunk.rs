@@ -10,7 +10,28 @@ use world::WorldPosition;
 
 pub const CHUNK_WIDTH: i32 = 16;
 
-pub type ChunkPosition = Point;
+#[derive(Debug, Clone)]
+pub struct ChunkPosition(pub Point);
+
+impl ChunkPosition {
+    pub fn from_world(pos: &WorldPosition) -> ChunkPosition {
+        let conv = |i: i32| {
+            let i_new = i % CHUNK_WIDTH;
+            if i_new < 0 {
+                CHUNK_WIDTH + i_new
+            } else {
+                i_new
+            }
+        };
+        ChunkPosition(Point::new(conv(pos.x), conv(pos.y)))
+    }
+}
+
+impl fmt::Display for ChunkPosition {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Chunk {
@@ -25,8 +46,8 @@ impl Chunk {
         let mut cells = Vec::new();
         let center = WorldPosition::from_chunk_index(*index);
 
-            for j in 0..(CHUNK_WIDTH) {
-        for i in 0..(CHUNK_WIDTH) {
+        for j in 0..(CHUNK_WIDTH) {
+            for i in 0..(CHUNK_WIDTH) {
                 let ax = (center.x + i) as f32;
                 let ay = (center.y + j) as f32;
                 let conv = |a: f32, b| NOISE_SCALE * (a * COS_THETA + b * SIN_THETA);
@@ -51,11 +72,11 @@ impl Chunk {
         assert!(pos.y >= 0);
         assert!(pos.x < CHUNK_WIDTH);
         assert!(pos.y < CHUNK_WIDTH);
-        ChunkPosition::new(pos.x, pos.y)
+        ChunkPosition(pos)
     }
 
     fn index(&self, pos: ChunkPosition) -> usize {
-        (pos.y * CHUNK_WIDTH + pos.x) as usize
+        (pos.0.y * CHUNK_WIDTH + pos.0.x) as usize
     }
 
     /// Gets an immutable cell reference relative to within this Chunk.
@@ -72,7 +93,7 @@ impl Chunk {
 
     /// Calculates the position in the world the point in the chunk represents.
     pub fn world_position(&self, index: &ChunkIndex, pos: &ChunkPosition) -> Point {
-        Point::new(pos.x + index.0.x * CHUNK_WIDTH, pos.y + index.0.y * CHUNK_WIDTH)
+        Point::new(pos.0.x + index.0.x * CHUNK_WIDTH, pos.0.y + index.0.y * CHUNK_WIDTH)
     }
 
     pub fn iter(&self) -> Cells {
@@ -96,7 +117,7 @@ impl<'a> Iterator for Cells<'a> {
     fn next(&mut self) -> Option<(ChunkPosition, &'a Cell)> {
         let x = self.index % self.width;
         let y = self.index / self.width;
-        let level_position = ChunkPosition::new(x, y);
+        let level_position = ChunkPosition(Point::new(x, y));
         self.index += 1;
         match self.inner.next() {
             Some(cell) => {

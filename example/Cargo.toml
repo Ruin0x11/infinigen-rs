@@ -5,7 +5,7 @@ workspace = ".."
 
 [dependencies]
 infinigen = { path = "../lib" }
-caca = "0.1.0"
+pancurses = "0.8.0"
 noise = "0.4.0"
 serde = "0.9.13"
 serde_derive = "0.9.13"

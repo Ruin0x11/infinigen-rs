@@ -15,4 +15,11 @@ impl Cell {
             Cell::Nothing => ' ',
         }
     }
+
+    pub fn can_walk(&self) -> bool {
+        match *self {
+            Cell::Floor => true,
+            _           => false,
+        }
+    }
 }

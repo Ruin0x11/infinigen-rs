@@ -101,7 +101,7 @@ pub trait ManagedRegion<'a, C, H, I: Index>
         let normalized_idx = self.normalize_chunk_index(i);
 
         let (offset, size) = self.read_chunk_offset(&normalized_idx);
-        println!("WRITE idx: {} offset: {} exists: {}", normalized_idx, offset, size.is_some());
+        // println!("WRITE idx: {} offset: {} exists: {}", normalized_idx, offset, size.is_some());
 
         match size {
             Some(size) => {
@@ -121,7 +121,7 @@ pub trait ManagedRegion<'a, C, H, I: Index>
         let sector_count = sector_count as u8;
 
         let new_offset = self.handle().seek(SeekFrom::End(0))?;
-        println!("APPEND idx: {} offset: {}", index, new_offset);
+        // println!("APPEND idx: {} offset: {}", index, new_offset);
 
         self.handle().write(chunk_data.as_slice())?;
         self.write_chunk_offset(index, new_offset, sector_count)?;
@@ -143,13 +143,13 @@ pub trait ManagedRegion<'a, C, H, I: Index>
 
         let normalized_idx = self.normalize_chunk_index(index);
         let (offset, size_opt) = self.read_chunk_offset(&normalized_idx);
-        println!("OFFSET: {}", offset);
+        // println!("OFFSET: {}", offset);
         let size = match size_opt {
             Some(s) => s,
             None    => return Err(NoChunkInSavefile(normalized_idx.clone())),
         };
 
-        println!("READ idx: {} offset: {}", normalized_idx, offset);
+        // println!("READ idx: {} offset: {}", normalized_idx, offset);
         let buf = self.read_bytes(offset, size);
 
         // let decompressed = decompress_data(&buf)?;
@@ -174,12 +174,12 @@ pub trait ManagedRegion<'a, C, H, I: Index>
         } else {
             Some(data[1] as usize * Self::SECTOR_SIZE)
         };
-        println!("idx: {} offset: {} size: {}", index, offset, data[1]);
+        // println!("idx: {} offset: {} size: {}", index, offset, data[1]);
         (offset, size)
     }
 
     fn write_chunk_offset(&mut self, index: &RegionLocalIndex, new_offset: u64, sector_count: u8) -> SerialResult<()> {
-        println!("offset: {} sectors: {}", new_offset, sector_count);
+        // println!("offset: {} sectors: {}", new_offset, sector_count);
         let val = self.create_lookup_table_entry(new_offset, sector_count);
         let offset = Self::get_chunk_offset(index);
         self.handle().seek(SeekFrom::Start(offset))?;
