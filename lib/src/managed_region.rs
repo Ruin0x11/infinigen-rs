@@ -192,7 +192,12 @@ pub trait ManagedRegion<'a, C, H, I: Index>
              ((index.1 % Self::REGION_WIDTH) * Self::REGION_WIDTH)) as u64
     }
 
-    fn read_bytes(&mut self, offset: u64, size: usize) -> Vec<u8>;
+    fn read_bytes(&mut self, offset: u64, size: usize) -> Vec<u8> {
+        self.handle().seek(SeekFrom::Start(offset)).unwrap();
+        let mut buf = vec![0u8; size];
+        self.handle().read(buf.as_mut_slice()).unwrap();
+        buf
+    }
 
     /// Notifies this Region that a chunk was created, so that its lifetime
     /// should be tracked by the Region.

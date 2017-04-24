@@ -1,6 +1,5 @@
 use std::collections::{HashSet, hash_map, HashMap};
 use std::fs::File;
-use std::io::{Seek, SeekFrom, Read};
 
 use noise::{Perlin, Seedable};
 use infinigen::*;
@@ -49,13 +48,6 @@ impl<'a, C: Serialize + Deserialize> ManagedRegion<'a, C, File, ChunkIndex> for 
 
     fn receive_created_chunk(&mut self, index: &ChunkIndex) {
         self.unsaved_chunks.insert(index.clone());
-    }
-
-    fn read_bytes(&mut self, offset: u64, size: usize) -> Vec<u8> {
-        self.handle.seek(SeekFrom::Start(offset)).unwrap();
-        let mut buf = vec![0u8; size];
-        self.handle.read(buf.as_mut_slice()).unwrap();
-        buf
     }
 
     fn is_empty(&self) -> bool {
