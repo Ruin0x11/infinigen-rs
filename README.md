@@ -1,2 +1,2 @@
-# rust-chunked-world
-Demonstration of an "infinite chunked terrain" system using Rust, with serialization.
+# infinigen-rs
+A rust library for the creation of infinite chunked terrain, like Minecraft.
