@@ -44,8 +44,6 @@ impl Point {
     }
 }
 
-pub const POINT_ZERO: Point = Point { x: 0, y: 0 };
-
 impl Into<Point> for (i32, i32) {
     fn into(self) -> Point {
         Point{ x: self.0, y: self.1 }
@@ -217,82 +215,11 @@ impl Iterator for CircleArea {
     }
 }
 
-pub struct PointArea {
-    pos: Point,
-    done: bool,
-}
-
-impl PointArea {
-    pub fn new<P: Into<Point>>(pos: P) -> Self {
-        PointArea {
-            pos: pos.into(),
-            done: false,
-        }
-    }
-}
-
-impl Iterator for PointArea {
-    type Item = Point;
-
-    fn next(&mut self) -> Option<Point> {
-        if self.done {
-            return None
-        }
-
-        self.done = true;
-        Some(self.pos)
-    }
-}
-
-/// A square area defined by its "half_side" or radius.
-/// A half_side of 0 means no points. Radius of 1 means the centre point.
-/// Radius of 2 means a square of 9 points, and so on.
-pub struct SquareArea {
-    pos: Point,
-    min_x: i32,
-    max: Point,
-    radius: i32,
-}
-
-impl SquareArea {
-    pub fn new<P: Into<Point>>(center: P, radius: i32) -> Self {
-        let center = center.into();
-        let half_side = radius - 1;
-        SquareArea {
-            radius: radius,
-            pos: center - (half_side, half_side),
-            min_x: center.x - half_side,
-            max: center + (half_side, half_side),
-        }
-    }
-}
-
-impl Iterator for SquareArea {
-    type Item = Point;
-
-    fn next(&mut self) -> Option<Point> {
-        if self.radius == 0 {
-            return None
-        }
-
-        if self.pos.y > self.max.y {
-            return None
-        }
-        let current_point = self.pos;
-        self.pos.x += 1;
-        if self.pos.x > self.max.x {
-            self.pos.y += 1;
-            self.pos.x = self.min_x;
-        }
-        return Some(current_point)
-    }
-}
 
 #[cfg(test)]
 mod test {
-    use std::iter::FromIterator;
     use std::f32::EPSILON;
-    use super::{Point, SquareArea};
+    use super::Point;
 
     #[test]
     fn test_tile_distance() {
@@ -354,34 +281,6 @@ mod test {
         let expected = 5.0;
         assert!((actual - expected).abs() <= EPSILON);
 }
-
-    #[test]
-    fn test_points_within_radius_of_zero() {
-        let actual: Vec<Point> = FromIterator::from_iter(SquareArea::new((3, 3), 0));
-        assert_eq!(actual, [(3, 3)]);
-    }
-
-    #[test]
-    fn test_points_within_radius_of_one() {
-        let actual: Vec<Point> = FromIterator::from_iter(SquareArea::new((0, 0), 1));
-        let expected = [(-1, -1), (0, -1), (1, -1),
-                        (-1,  0), (0,  0), (1,  0),
-                        (-1,  1), (0,  1), (1,  1)];
-        assert_eq!(actual, expected);
-    }
-
-    #[test]
-    fn test_points_within_radius_of_five() {
-        let actual: Vec<Point> = FromIterator::from_iter(SquareArea::new((0, 0), 5));
-
-        let mut expected = Vec::new();
-        for y in -5..6 {
-            for x in -5..6 {
-                expected.push(Point{x: x, y: y});
-            }
-        }
-        assert_eq!(actual, expected);
-    }
 
     #[test]
     fn test_point_comparison() {

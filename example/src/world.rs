@@ -1,13 +1,127 @@
 use std::collections::{HashSet, hash_map, HashMap};
+use std::fs::File;
+use std::io::{Seek, SeekFrom, Read};
 
-use noise::Perlin;
+use noise::{Perlin, Seedable};
+use infinigen::*;
+use serde::Serialize;
+use serde::de::Deserialize;
 
 use cell::Cell;
 use chunk::*;
 use dude::Dude;
 use point::Point;
-use region::*;
-use serial_chunk::*;
+
+pub struct MyRegion {
+    pub handle: Box<File>,
+    pub unsaved_chunks: HashSet<ChunkIndex>,
+}
+
+// fn compress_data(bytes: &Vec<u8>) -> SerialResult<Vec<u8>> {
+//     let mut e = ZlibEncoder::new(Vec::new(), Compression::Default);
+//     e.write(bytes.as_slice())?;
+//     e.finish().map_err(SerialError::from)
+// }
+
+// fn decompress_data(bytes: &Vec<u8>) -> SerialResult<Vec<u8>> {
+//     let mut d = ZlibDecoder::new(bytes.as_slice());
+//     let mut buf = Vec::new();
+//     d.read(&mut buf).map_err(SerialError::from)?;
+//     Ok(buf)
+// }
+
+impl<'a, C: Serialize + Deserialize> ManagedRegion<'a, C, File, ChunkIndex> for MyRegion {
+    fn handle(&mut self) -> &mut File {
+        &mut self.handle
+    }
+
+    fn mark_as_saved(&mut self, index: &ChunkIndex) {
+        self.unsaved_chunks.remove(index);
+    }
+
+    fn mark_as_unsaved(&mut self, index: &ChunkIndex) {
+        self.unsaved_chunks.insert(index.clone());
+    }
+
+    fn chunk_unsaved(&self, index: &ChunkIndex) -> bool {
+        self.unsaved_chunks.contains(index)
+    }
+
+    fn receive_created_chunk(&mut self, index: &ChunkIndex) {
+        self.unsaved_chunks.insert(index.clone());
+    }
+
+    fn read_bytes(&mut self, offset: u64, size: usize) -> Vec<u8> {
+        self.handle.seek(SeekFrom::Start(offset)).unwrap();
+        let mut buf = vec![0u8; size];
+        self.handle.read(buf.as_mut_slice()).unwrap();
+        buf
+    }
+
+    fn is_empty(&self) -> bool {
+        self.unsaved_chunks.len() == 0
+    }
+}
+
+pub struct RegionManager {
+    regions: HashMap<RegionIndex, MyRegion>,
+}
+
+impl RegionManager {
+    pub fn new() -> Self {
+        RegionManager {
+            regions: HashMap::new(),
+        }
+    }
+}
+
+// TODO: Is there some way of using AsRef here instead, because we don't care
+// about the underlying 2D point struct?
+impl Index for ChunkIndex {
+    fn x(&self) -> i32 { self.0.x }
+    fn y(&self) -> i32 { self.0.y }
+}
+
+pub fn get_filename(index: &RegionIndex) -> String {
+    format!("r.{}.{}.sr", index.0, index.1)
+}
+
+impl<'a> Manager<'a, SerialChunk, File, ChunkIndex, MyRegion> for RegionManager
+    where MyRegion: ManagedRegion<'a, SerialChunk, File, ChunkIndex>{
+    fn load(&self, index: RegionIndex) -> MyRegion {
+        println!("LOAD REGION {}", index);
+        let filename = get_filename(&index);
+
+        let handle = MyRegion::get_region_file(filename);
+
+        MyRegion {
+            handle: Box::new(handle),
+            unsaved_chunks: HashSet::new(),
+        }
+    }
+
+    fn prune_empty(&mut self) {
+        let indices: Vec<RegionIndex> = self.regions.iter().map(|(i, _)| i).cloned().collect();
+        for idx in indices {
+            if self.regions.get(&idx).map_or(false, |r: &MyRegion| r.is_empty()) {
+                println!("UNLOAD REGION {}", idx);
+                self.regions.remove(&idx);
+            }
+        }
+    }
+
+
+    fn get_for_chunk(&mut self, chunk_index: &ChunkIndex) -> &mut MyRegion {
+        let region_index = MyRegion::get_region_index(chunk_index);
+
+        if !self.regions.contains_key(&region_index) {
+            let region = self.load(region_index);
+            self.regions.insert(region_index.clone(), region);
+        }
+
+        self.regions.get_mut(&region_index).unwrap()
+    }
+}
 
 pub type WorldPosition = Point;
 
@@ -27,13 +141,6 @@ pub struct World {
 }
 
 impl World {
-    pub fn new(size: Point) -> Self {
-        let mut world = World::new_empty();
-        let chunks = World::generate_chunks(size.x, size.y, &world.gen);
-        world.chunks = chunks;
-        world
-    }
-
     pub fn new_empty() -> Self {
         World {
             regions: RegionManager::new(),
@@ -42,46 +149,17 @@ impl World {
             observer: WorldPosition::new(0, 0),
 
             // TODO: Save world information, seed
-            gen: Perlin::new(),
+            gen: Perlin::new().set_seed(2),
         }
     }
-
-    fn generate_chunks(width: i32, height: i32, gen: &Perlin) -> HashMap<ChunkIndex, Chunk> {
-        assert!(width > 0);
-        assert!(height > 0);
-
-        let mut chunks = HashMap::new();
-
-        let ceiling = |q: i32, d: i32| (q + d - 1) / d;
-        let columns = ceiling(width, CHUNK_WIDTH);
-        let rows = ceiling(height, CHUNK_WIDTH);
-
-        for i in 0..columns {
-            for j in 0..rows {
-                let index = ChunkIndex::new(i, j);
-                chunks.insert(index, Chunk::new(&index, gen));
-            }
-        }
-        chunks
-    }
-
 
     pub fn chunk_from_world_pos(&self, pos: WorldPosition) -> Option<&Chunk> {
         let index = ChunkIndex::from_world_pos(pos);
         self.chunk(index)
     }
 
-    pub fn chunk_mut_from_world_pos(&mut self, pos: WorldPosition) -> Option<&mut Chunk> {
-        let index = ChunkIndex::from_world_pos(pos);
-        self.chunk_mut(index)
-    }
-
     pub fn chunk(&self, index: ChunkIndex) -> Option<&Chunk> {
         self.chunks.get(&index)
-    }
-
-    pub fn chunk_mut(&mut self, index: ChunkIndex) -> Option<&mut Chunk> {
-        self.chunks.get_mut(&index)
     }
 
     /// Return an iterator over `Cell` that covers a rectangular shape
@@ -146,14 +224,12 @@ impl World {
 }
 
 impl World {
-    pub fn load_chunk(&mut self, index: &ChunkIndex) -> Result<(), SerialError> {
+    pub fn load_chunk_from_save(&mut self, index: &ChunkIndex) -> Result<(), SerialError> {
         let region = self.regions.get_for_chunk(index);
-        let chunk = match region.read_chunk(index) {
+        let chunk: SerialChunk = match region.read_chunk(index) {
             Ok(c) => c,
             Err(e) => return Err(e),
         };
-        println!("{:?}", chunk.dudes);
-
         println!("Loading chunk at {}", index);
         for (pos, dude) in chunk.dudes.into_iter() {
             println!("dude!");
@@ -164,10 +240,28 @@ impl World {
         Ok(())
     }
 
-    pub fn load_or_gen_chunk(&mut self, index: &ChunkIndex) -> Result<(), SerialError> {
-        if let Err(_) = self.load_chunk(index) {
+    fn unload_chunk_internal(&mut self, index: &ChunkIndex) -> Result<SerialChunk, SerialError> {
+        let chunk = match self.chunks.remove(&index) {
+            Some(c) => c,
+            None => return Err(NoChunkInWorld(index.0.x, index.0.y)),
+        };
+        let dudes = self.remove_dudes_in_chunk(&index, &chunk);
+        println!("Unloading chunk at {}", index);
+        let serial = SerialChunk {
+            chunk: chunk,
+            dudes: dudes,
+        };
+        Ok(serial)
+    }
+}
+
+const UPDATE_RADIUS: i32 = 3;
+
+impl<'a> Chunked<'a, File, ChunkIndex, SerialChunk, MyRegion> for World {
+    fn load_chunk(&mut self, index: &ChunkIndex) -> Result<(), SerialError> {
+        if let Err(_) = self.load_chunk_from_save(index) {
             if self.chunk_loaded(index) {
-                return Err(ChunkAlreadyLoaded(index.clone()));
+                return Err(ChunkAlreadyLoaded(index.0.x, index.0.y));
             }
             println!("Addding chunk at {}", index);
             self.chunks.insert(index.clone(), Chunk::new(index, &self.gen));
@@ -179,8 +273,8 @@ impl World {
         Ok(())
     }
 
-    pub fn save_and_unload_chunk(&mut self, index: &ChunkIndex) -> Result<(), SerialError> {
-        let chunk = match self.unload_chunk(index) {
+    fn unload_chunk(&mut self, index: &ChunkIndex) -> Result<(), SerialError> {
+        let chunk = match self.unload_chunk_internal(index) {
             Ok(c) => c,
             Err(e) => return Err(e),
         };
@@ -188,48 +282,15 @@ impl World {
         region.write_chunk(chunk, index)
     }
 
-    fn unload_chunk(&mut self, index: &ChunkIndex) -> Result<SerialChunk, SerialError> {
-        let chunk = match self.chunks.remove(&index) {
-            Some(c) => c,
-            None => return Err(NoChunkInWorld(index.clone())),
-        };
-        let dudes = self.remove_dudes_in_chunk(&index, &chunk);
-        println!("Unloading chunk at {}", index);
-        let serial = SerialChunk {
-            chunk: chunk,
-            dudes: dudes,
-        };
-        Ok(serial)
-    }
-
     fn chunk_loaded(&self, index: &ChunkIndex) -> bool {
         self.chunks.contains_key(index)
     }
 
-    pub fn chunk_indices(&self) -> Vec<ChunkIndex> {
+    fn chunk_indices(&self) -> Vec<ChunkIndex> {
         self.chunks.iter().map(|(&i, _)| i).collect()
     }
 
-    pub fn save(mut self) -> Result<(), SerialError> {
-        let indices = self.chunk_indices();
-        for index in indices.iter() {
-            self.save_and_unload_chunk(index)?;
-        }
-        Ok(())
-    }
-
-    pub fn load() -> Result<Self, SerialError> {
-        let index = ChunkIndex::new(0, 0);
-        let mut world = World::new_empty();
-        world.load_chunk(&index);
-        Ok(world)
-    }
-}
-
-const UPDATE_RADIUS: i32 = 3;
-
-impl World {
-    pub fn update_chunks(&mut self) -> Result<(), SerialError>{
+    fn update_chunks(&mut self) -> Result<(), SerialError>{
         let mut relevant: HashSet<ChunkIndex> = HashSet::new();
         let center = ChunkIndex::from_world_pos(self.observer);
         relevant.insert(center);
@@ -251,14 +312,14 @@ impl World {
         for idx in relevant.iter() {
             if !self.chunk_loaded(idx) {
                 println!("Loading chunk {}", idx);
-                self.load_or_gen_chunk(idx)?;
+                self.load_chunk(idx)?;
             }
         }
 
         let indices = self.chunk_indices();
         for idx in indices.iter() {
             if !relevant.contains(idx) && self.chunk_loaded(idx) {
-                self.save_and_unload_chunk(idx)?;
+                self.unload_chunk(idx)?;
             }
         }
 
@@ -266,23 +327,12 @@ impl World {
 
         Ok(())
     }
-}
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_saveload() {
-        let mut world = World::new(Point::new(128, 128));
-        let index = ChunkIndex::new(0, 0);
-
-        world.place_dude(Point::new(0, 0));
-        let count_before = world.dudes.len();
-
-        world.save_and_unload_chunk(&index).unwrap();
-        world.load_chunk(&index).unwrap();
-
-        assert_eq!(count_before, world.dudes.len());
+    fn save(mut self) -> Result<(), SerialError> {
+        let indices = self.chunk_indices();
+        for index in indices.iter() {
+            self.unload_chunk(index)?;
+        }
+        Ok(())
     }
 }
