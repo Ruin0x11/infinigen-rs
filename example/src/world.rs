@@ -200,15 +200,15 @@ impl World {
         for pos in self.dudes.keys() {
             let dir = Direction::choose8();
             let new_pos = *pos + dir;
-            if self.can_walk(&new_pos) {
-                actions.push((pos.clone(), new_pos));
-            }
+            actions.push((pos.clone(), new_pos));
         }
 
         for (pos, new_pos) in actions {
-            let mut dude = self.dudes.remove(&pos).unwrap();
-            dude.pos = new_pos.clone();
-            self.dudes.insert(new_pos, dude);
+            if self.can_walk(&new_pos) {
+                let mut dude = self.dudes.remove(&pos).unwrap();
+                dude.pos = new_pos.clone();
+                self.dudes.insert(new_pos, dude);
+            }
         }
     }
 }
@@ -245,7 +245,7 @@ impl World {
     }
 }
 
-const UPDATE_RADIUS: i32 = 3;
+const UPDATE_RADIUS: i32 = 2;
 
 impl<'a> Chunked<'a, File, ChunkIndex, SerialChunk, Region<ChunkIndex>> for World {
     fn load_chunk(&mut self, index: &ChunkIndex) -> Result<(), SerialError> {

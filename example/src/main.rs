@@ -17,7 +17,7 @@ mod world;
 use infinigen::Chunked;
 use pancurses::Input;
 
-use cell::Cell;
+use cell::CellKind;
 use direction::Direction;
 use world::World;
 
@@ -29,6 +29,8 @@ fn main() {
 fn go() {
     // let mut world = World::new(Point::new(128, 128));
     let mut world = World::new_empty();
+
+    canvas::show_splash();
 
     loop {
         world.update_chunks().unwrap();
@@ -61,6 +63,6 @@ fn try_step(world: &mut World, dir: Direction) {
     if world.can_walk(&new_pos) {
         world.observer = new_pos;
     } else if !world.cell(&new_pos).map_or(false, |c| c.can_walk()) {
-        world.cell_mut(&new_pos).map(|c| *c = Cell::Floor);
+        world.cell_mut(&new_pos).map(|c| c.kind = CellKind::Floor);
     }
 }

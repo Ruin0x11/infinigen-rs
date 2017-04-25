@@ -3,12 +3,13 @@ use std::fmt;
 
 use noise::{NoiseModule, Perlin};
 
-use cell::Cell;
+use canvas::Color;
+use cell::*;
 use dude::Dude;
 use point::Point;
 use world::WorldPosition;
 
-pub const CHUNK_WIDTH: i32 = 16;
+pub const CHUNK_WIDTH: i32 = 32;
 
 #[derive(Debug, Clone)]
 pub struct ChunkPosition(pub Point);
@@ -47,25 +48,40 @@ impl fmt::Display for ChunkPosition {
 pub struct Chunk {
     cells: Vec<Cell>,
 }
-const COS_THETA: f32 = 0.99854; // Theta (rotation) of about 3.1 degrees (quite arbitrarily)
+
+const COS_THETA: f32 = 0.99854;
 const SIN_THETA: f32 = 0.05408;
 const NOISE_SCALE: f32 = 0.05;
+const THRESHOLD: f32 = 0.30;
 
 impl Chunk {
     pub fn new(index: &ChunkIndex, gen: &Perlin) -> Self {
         let mut cells = Vec::new();
         let center = WorldPosition::from_chunk_index(*index);
 
+        let fg_color = Color::rand();
+        let bg_color = Color::rand();
+
         for j in 0..(CHUNK_WIDTH) {
             for i in 0..(CHUNK_WIDTH) {
                 let ax = (center.x + i) as f32;
                 let ay = (center.y + j) as f32;
+                let az = 0.2333333333;
+
+                // Perlin doesn't work on integer values, so rotate slightly.
                 let conv = |a: f32, b| NOISE_SCALE * (a * COS_THETA + b * SIN_THETA);
-                let res = gen.get([conv(ay, -ax), conv(ax, ay)]);
-                if res > 0.30 {
-                    cells.push(Cell::Tree);
+                let res = gen.get([conv(ay, -ax), conv(ax, ay), az]);
+
+                if res > THRESHOLD {
+                    cells.push(Cell::new(CellKind::Tree, bg_color));
                 } else {
-                    cells.push(Cell::Floor);
+                    cells.push(Cell::new(CellKind::Floor, bg_color));
+                }
+
+                let res = gen.get([conv(ay, -ax), conv(ax, ay), az + 4.555555555]);
+                let index = Chunk::cell_index(ChunkPosition(Point::new(i, j)));
+                if res > THRESHOLD {
+                    cells[index].color = fg_color;
                 }
             }
         }
@@ -75,19 +91,19 @@ impl Chunk {
         }
     }
 
-    fn index(&self, pos: ChunkPosition) -> usize {
+    fn cell_index(pos: ChunkPosition) -> usize {
         (pos.0.y * CHUNK_WIDTH + pos.0.x) as usize
     }
 
     /// Gets an immutable cell reference relative to within this Chunk.
     pub fn cell(&self, pos: ChunkPosition) -> &Cell {
-        let index = self.index(pos.into());
+        let index = Chunk::cell_index(pos.into());
         &self.cells[index]
     }
 
     /// Gets an mutable cell reference relative to within this Chunk.
     pub fn cell_mut(&mut self, pos: ChunkPosition) -> &mut Cell {
-        let index = self.index(pos.into());
+        let index = Chunk::cell_index(pos.into());
         &mut self.cells[index]
     }
 

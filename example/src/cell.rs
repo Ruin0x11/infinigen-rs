@@ -1,25 +1,40 @@
+use canvas::Color;
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub enum Cell {
+pub enum CellKind {
     Wall,
     Floor,
     Tree,
     Nothing,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct Cell {
+    pub color: Color,
+    pub kind: CellKind,
+}
+
 impl Cell {
+    pub fn new(kind: CellKind, color: Color) -> Self{
+        Cell {
+            color: color,
+            kind: kind
+        }
+    }
+
     pub fn to_char(&self) -> char {
-        match *self {
-            Cell::Wall => '#',
-            Cell::Floor => '.',
-            Cell::Tree => '%',
-            Cell::Nothing => ' ',
+        match self.kind {
+            CellKind::Wall => '#',
+            CellKind::Floor => '.',
+            CellKind::Tree => '%',
+            CellKind::Nothing => ' ',
         }
     }
 
     pub fn can_walk(&self) -> bool {
-        match *self {
-            Cell::Floor => true,
-            _           => false,
+        match self.kind {
+            CellKind::Floor => true,
+            _               => false,
         }
     }
 }
