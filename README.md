@@ -1,5 +1,5 @@
 # infinigen-rs
-A Rust library for the creation of infinite chunked terrain, like Minecraft.
+A Rust interface for supporting the creation and serialization of infinite chunked terrain, like Minecraft.
 
 Allows for packing of groups of chunk data into regions and automatic loading/unloading. Region file handles are cached, allowing for better I/O performance.
 
