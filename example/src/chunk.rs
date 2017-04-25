@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::fmt;
 
+use infinigen::ManagedChunk;
 use noise::{NoiseModule, Perlin};
 
 use canvas::Color;
@@ -9,7 +10,7 @@ use dude::Dude;
 use point::Point;
 use world::WorldPosition;
 
-pub const CHUNK_WIDTH: i32 = 32;
+pub const CHUNK_WIDTH: i32 = 8;
 
 #[derive(Debug, Clone)]
 pub struct ChunkPosition(pub Point);
@@ -180,4 +181,10 @@ impl fmt::Display for ChunkIndex {
 pub struct SerialChunk {
     pub chunk: Chunk,
     pub dudes: HashMap<WorldPosition, Dude>,
+}
+
+impl ManagedChunk for SerialChunk {
+    const SECTOR_SIZE: usize = 4096;
+
+    const REGION_WIDTH: i32 = 2;
 }

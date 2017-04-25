@@ -4,11 +4,9 @@ use std::fs::{File, OpenOptions};
 use std::path::Path;
 
 use bincode::{self, Infinite};
-use serde::Serialize;
-use serde::de::Deserialize;
 
 use region::*;
-use traits::Index;
+use traits::{ManagedChunk, Index};
 
 /// Pads the given byte vec with zeroes to the next multiple of the given sector
 /// size.
@@ -38,24 +36,17 @@ fn pad_byte_vec(bytes: &mut Vec<u8>, size: usize) {
 /// performance and easier encoding of offsets and sizes.
 pub trait ManagedRegion<'a, C, H, I: Index>
     where H: Seek + Write + Read,
-          C: Serialize + Deserialize {
-
-    /// The number of bytes to align the saved chunk data to in the region file.
-    /// Should be a power of two.
-    const SECTOR_SIZE: usize = 4096;
-
-    /// The number of chunks per row inside regions.
-    const REGION_WIDTH: i32 = 16;
-
-    fn lookup_table_size() -> u64 { (Self::REGION_WIDTH * Self::REGION_WIDTH) as u64 * 2 }
+          C: ManagedChunk {
 
     fn chunk_unsaved(&self, index: &I) -> bool;
     fn mark_as_saved(&mut self, index: &I);
     fn mark_as_unsaved(&mut self, index: &I);
     fn handle(&mut self) -> &mut H;
 
+    fn lookup_table_size() -> u64 { (C::REGION_WIDTH * C::REGION_WIDTH) as u64 * 2 }
+
     fn create_lookup_table_entry(&self, eof: u64, sector_count: u8) -> [u8; 2] {
-        let offset: u8 = ((eof - Self::lookup_table_size()) / Self::SECTOR_SIZE as u64) as u8;
+        let offset: u8 = ((eof - Self::lookup_table_size()) / C::SECTOR_SIZE as u64) as u8;
 
         [offset, sector_count]
     }
@@ -68,13 +59,13 @@ pub trait ManagedRegion<'a, C, H, I: Index>
             // handled properly. Chunk index (-1, -1) should map to region index
             // (-1, -1), but -1 / self.width() = 0.
             if q < 0 {
-                q -= Self::REGION_WIDTH;
+                q -= C::REGION_WIDTH;
             }
 
             (q / d)
         };
-        RegionIndex(conv(chunk_index.x(), Self::REGION_WIDTH),
-                    conv(chunk_index.y(), Self::REGION_WIDTH))
+        RegionIndex(conv(chunk_index.x(), C::REGION_WIDTH),
+                    conv(chunk_index.y(), C::REGION_WIDTH))
     }
 
     /// Returns the handle to a region file. If it doesn't exist, it is created
@@ -99,9 +90,9 @@ pub trait ManagedRegion<'a, C, H, I: Index>
     /// Obtain this chunk's index relative to this region's index.
     fn normalize_chunk_index(&self, chunk_index: &I) -> RegionLocalIndex {
         let conv = |i: i32| {
-            let i_new = i % Self::REGION_WIDTH;
+            let i_new = i % C::REGION_WIDTH;
             if i_new < 0 {
-                Self::REGION_WIDTH + i_new
+                C::REGION_WIDTH + i_new
             } else {
                 i_new
             }
@@ -120,7 +111,7 @@ pub trait ManagedRegion<'a, C, H, I: Index>
         // just compress the entire region files after closing the handles.
 
         // let mut compressed = compress_data(&mut encoded)?;
-        pad_byte_vec(&mut encoded, Self::SECTOR_SIZE);
+        pad_byte_vec(&mut encoded, C::SECTOR_SIZE);
 
         let normalized_idx = self.normalize_chunk_index(index);
 
@@ -128,7 +119,9 @@ pub trait ManagedRegion<'a, C, H, I: Index>
 
         match size {
             Some(size) => {
-                assert!(size >= encoded.len(), "Chunk data grew past allocated sector_count!");
+                assert!(size >= encoded.len(),
+                        "Chunk data grew larger than allocated sector size! \
+                         Consider using a larger sector size.");
                 self.update_chunk(encoded, offset)?;
             },
             None       => { self.append_chunk(encoded, &normalized_idx)?; },
@@ -138,7 +131,7 @@ pub trait ManagedRegion<'a, C, H, I: Index>
     }
 
     fn append_chunk(&mut self, chunk_data: Vec<u8>, index: &RegionLocalIndex) -> SerialResult<()> {
-        let sector_count = (chunk_data.len() as f32 / Self::SECTOR_SIZE as f32).ceil() as u32;
+        let sector_count = (chunk_data.len() as f32 / C::SECTOR_SIZE as f32).ceil() as u32;
         assert!(sector_count < 256, "Sector count overflow!");
         assert!(sector_count > 0, "Sector count zero! Len: {}", chunk_data.len());
         let sector_count = sector_count as u8;
@@ -150,7 +143,7 @@ pub trait ManagedRegion<'a, C, H, I: Index>
 
         let (o, v) = self.read_chunk_offset(index);
         assert_eq!(new_offset, o, "index: {} new: {} old: {}", index, new_offset, o);
-        assert_eq!(sector_count as usize * Self::SECTOR_SIZE, v.unwrap());
+        assert_eq!(sector_count as usize * C::SECTOR_SIZE, v.unwrap());
         Ok(())
     }
 
@@ -190,11 +183,11 @@ pub trait ManagedRegion<'a, C, H, I: Index>
 
         // the byte offset should be u64 for Seek::seek, otherwise it will just
         // be cast every time.
-        let offset = Self::lookup_table_size() + (data[0] as usize * Self::SECTOR_SIZE) as u64;
+        let offset = Self::lookup_table_size() + (data[0] as usize * C::SECTOR_SIZE) as u64;
         let size = if data[1] == 0 {
             None
         } else {
-            Some(data[1] as usize * Self::SECTOR_SIZE)
+            Some(data[1] as usize * C::SECTOR_SIZE)
         };
         (offset, size)
     }
@@ -209,8 +202,8 @@ pub trait ManagedRegion<'a, C, H, I: Index>
 
     /// Gets the offset into the lookup table for the chunk at an index.
     fn get_chunk_offset(index: &RegionLocalIndex) -> u64 {
-        2 * ((index.0 % Self::REGION_WIDTH) +
-             ((index.1 % Self::REGION_WIDTH) * Self::REGION_WIDTH)) as u64
+        2 * ((index.0 % C::REGION_WIDTH) +
+             ((index.1 % C::REGION_WIDTH) * C::REGION_WIDTH)) as u64
     }
 
     fn read_bytes(&mut self, offset: u64, size: usize) -> Vec<u8> {

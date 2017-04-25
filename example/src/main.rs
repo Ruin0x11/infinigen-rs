@@ -1,3 +1,4 @@
+#![feature(associated_consts)]
 extern crate infinigen;
 extern crate noise;
 extern crate pancurses;

@@ -214,17 +214,17 @@ impl World {
 }
 
 impl World {
-    pub fn load_chunk_from_save(&mut self, index: &ChunkIndex) -> Result<(), SerialError> {
-        let region = self.regions.get_for_chunk(index);
-        let chunk: SerialChunk = match region.read_chunk(index) {
-            Ok(c) => c,
-            Err(e) => return Err(e),
-        };
-        // println!("Loading chunk at {}", index);
+}
+
+const UPDATE_RADIUS: i32 = 2;
+
+impl<'a> Chunked<'a, File, ChunkIndex, SerialChunk, Region<ChunkIndex>, RegionManager<ChunkIndex>> for World {
+    fn load_chunk_internal(&mut self, chunk: SerialChunk, index: &ChunkIndex) -> Result<(), SerialError> {
         for (pos, dude) in chunk.dudes.into_iter() {
             // println!("dude!");
             self.dudes.insert(pos, dude);
         }
+
         self.chunks.insert(index.clone(), chunk.chunk);
 
         Ok(())
@@ -243,43 +243,25 @@ impl World {
         };
         Ok(serial)
     }
-}
 
-const UPDATE_RADIUS: i32 = 2;
+    fn generate_chunk(&mut self, index: &ChunkIndex) -> SerialResult<()> {
+        self.chunks.insert(index.clone(), Chunk::new(index, &self.gen));
 
-impl<'a> Chunked<'a, File, ChunkIndex, SerialChunk, Region<ChunkIndex>> for World {
-    fn load_chunk(&mut self, index: &ChunkIndex) -> Result<(), SerialError> {
-        if let Err(_) = self.load_chunk_from_save(index) {
-            if self.chunk_loaded(index) {
-                return Err(ChunkAlreadyLoaded(index.0.x, index.0.y));
-            }
-            // println!("Addding chunk at {}", index);
-            self.chunks.insert(index.clone(), Chunk::new(index, &self.gen));
-
-            for i in 4..8 {
-                for j in 4..8 {
-                    let chunk_pos = ChunkPosition::from(Point::new(i, j));
-                    let cell_pos = Chunk::world_position_at(&index, &chunk_pos);
-                    if self.can_walk(&cell_pos) {
-                        self.place_dude(cell_pos);
-                    }
+        for i in 4..8 {
+            for j in 4..8 {
+                let chunk_pos = ChunkPosition::from(Point::new(i, j));
+                let cell_pos = Chunk::world_position_at(&index, &chunk_pos);
+                if self.can_walk(&cell_pos) {
+                    self.place_dude(cell_pos);
                 }
             }
-
-            // The region this chunk was created in needs to know of the chunk
-            // that was created in-game but nonexistent on disk.
-            self.regions.notify_chunk_creation(index);
         }
+
         Ok(())
     }
 
-    fn unload_chunk(&mut self, index: &ChunkIndex) -> Result<(), SerialError> {
-        let chunk = match self.unload_chunk_internal(index) {
-            Ok(c) => c,
-            Err(e) => return Err(e),
-        };
-        let region = self.regions.get_for_chunk(index);
-        region.write_chunk(chunk, index)
+    fn regions_mut(&mut self) -> &mut RegionManager<ChunkIndex> {
+        &mut self.regions
     }
 
     fn chunk_loaded(&self, index: &ChunkIndex) -> bool {
@@ -288,6 +270,10 @@ impl<'a> Chunked<'a, File, ChunkIndex, SerialChunk, Region<ChunkIndex>> for Worl
 
     fn chunk_indices(&self) -> Vec<ChunkIndex> {
         self.chunks.iter().map(|(&i, _)| i).collect()
+    }
+
+    fn chunk_count(&self) -> usize {
+        self.chunks.len()
     }
 
     fn update_chunks(&mut self) -> Result<(), SerialError>{

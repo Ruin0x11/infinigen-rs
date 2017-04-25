@@ -4,9 +4,8 @@ use std::io;
 use std::fs::File;
 
 use bincode;
-use serde::{Serialize, Deserialize};
 
-use traits::Index;
+use traits::{Index, ManagedChunk};
 use managed_region::ManagedRegion;
 
 pub use self::SerialError::*;
@@ -73,7 +72,7 @@ pub struct Region<I: Index> {
 //     Ok(buf)
 // }
 
-impl<'a, I: Index, C: Serialize + Deserialize> ManagedRegion<'a, C, File, I> for Region<I> {
+impl<'a, I: Index, C: ManagedChunk> ManagedRegion<'a, C, File, I> for Region<I> {
     fn handle(&mut self) -> &mut File {
         &mut self.handle
     }
