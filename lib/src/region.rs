@@ -34,6 +34,7 @@ impl From<Box<bincode::ErrorKind>> for SerialError {
     }
 }
 
+/// An index of a chunk inside a region's coordinate space.
 #[derive(Copy, Clone, Debug, Hash, Eq, PartialEq)]
 pub struct RegionLocalIndex(pub i32, pub i32);
 
@@ -43,6 +44,7 @@ impl fmt::Display for RegionLocalIndex {
     }
 }
 
+/// An index of a region in a grid of all regions.
 #[derive(Copy, Clone, Debug, Hash, Eq, PartialEq)]
 pub struct RegionIndex(pub i32, pub i32);
 
@@ -52,7 +54,7 @@ impl fmt::Display for RegionIndex {
     }
 }
 
-
+/// Implementation of a region for on-disk serialization.
 pub struct Region<I: Index> {
     pub handle: Box<File>,
     pub unsaved_chunks: HashSet<I>,
@@ -97,6 +99,7 @@ impl<'a, I: Index, C: Serialize + Deserialize> ManagedRegion<'a, C, File, I> for
     }
 }
 
+/// Implementation of a region manager.
 pub struct RegionManager<I: Index> {
     pub regions: HashMap<RegionIndex, Region<I>>,
 }
