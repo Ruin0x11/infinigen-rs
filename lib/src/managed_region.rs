@@ -72,8 +72,9 @@ fn decompress_data(bytes: &Vec<u8>) -> SerialResult<Vec<u8>> {
 /// the lookup table in the file. Both indices are currently limited to 255.
 /// Data is aligned to a specified number of bytes, the sector size, for better
 /// performance and easier encoding of offsets and sizes.
-pub trait ManagedRegion<'a, C, I: Index>
-    where C: ManagedChunk {
+pub trait ManagedRegion<'a, I, C>
+    where I: Index,
+          C: ManagedChunk {
 
     fn chunk_unsaved(&self, index: &I) -> bool;
     fn mark_as_saved(&mut self, index: &I);

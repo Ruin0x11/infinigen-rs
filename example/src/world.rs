@@ -33,8 +33,8 @@ fn get_filename(index: &RegionIndex) -> String {
     format!("r.{}.{}.sr", index.0, index.1)
 }
 
-impl<'a, C: ManagedChunk> RegionManager<'a, C, ChunkIndex> for Terrain
-    where Region<ChunkIndex>: ManagedRegion<'a, C, ChunkIndex>{
+impl<'a> RegionManager<'a, ChunkIndex, SerialChunk> for Terrain
+    where Region<ChunkIndex>: ManagedRegion<'a, ChunkIndex, SerialChunk>{
     fn load(&mut self, index: RegionIndex) {
         let filename = get_filename(&index);
 
@@ -226,16 +226,9 @@ impl World {
     }
 }
 
-impl World {
-}
-
 const UPDATE_RADIUS: i32 = 2;
 
-impl<'a> ChunkedTerrain<'a, SerialChunk,
-                        ChunkIndex,
-                        Terrain> for World
-     {
-
+impl<'a> ChunkedTerrain<'a, ChunkIndex, SerialChunk, Terrain> for World {
     fn load_chunk_internal(&mut self, chunk: SerialChunk, index: &ChunkIndex) -> Result<(), SerialError> {
         for (pos, dude) in chunk.dudes.into_iter() {
             // println!("dude!");
@@ -278,9 +271,10 @@ impl<'a> ChunkedTerrain<'a, SerialChunk,
     }
 }
 
-impl<'a> ChunkedWorld<'a, SerialChunk, ChunkIndex, Terrain, World> for World
-    where Terrain: RegionManager<'a, SerialChunk, ChunkIndex> {
+impl<'a> ChunkedWorld<'a, ChunkIndex, SerialChunk, Terrain, World> for World
+    where Terrain: RegionManager<'a, ChunkIndex, SerialChunk> {
     fn terrain(&mut self) -> &mut World { self }
+
     fn generate_chunk(&mut self, index: &ChunkIndex) -> SerialResult<()> {
         self.chunks.insert(index.clone(), Chunk::new(index, &self.gen));
 

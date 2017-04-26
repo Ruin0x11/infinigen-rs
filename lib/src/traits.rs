@@ -24,10 +24,10 @@ pub trait ManagedChunk: Serialize + Deserialize {
 
 /// Describes a struct that can load and unload parts of the world. Used
 /// alongside a Manager for keeping track of unsaved chunks.
-pub trait ChunkedTerrain<'a, C, I, M>
+pub trait ChunkedTerrain<'a, I, C, M>
     where I:Index,
           C: ManagedChunk,
-          M: RegionManager<'a, C, I> {
+          M: RegionManager<'a, I, C> {
 
     fn load_chunk_internal(&mut self, chunk: C, index: &I) -> SerialResult<()>;
     fn unload_chunk_internal(&mut self, index: &I) -> SerialResult<C>;
@@ -60,10 +60,10 @@ pub trait ChunkedTerrain<'a, C, I, M>
 
 /// Describes a struct that is responsible for keeping track of multiple
 /// ManagedRegions and retrieving the correct region for a given chunk index.
-pub trait RegionManager<'a, C, I>
+pub trait RegionManager<'a, I, C>
     where I:Index,
           C: ManagedChunk,
-          Region<I>: ManagedRegion<'a, C, I> {
+          Region<I>: ManagedRegion<'a, I, C> {
 
     fn load(&mut self, index: RegionIndex);
     fn get(&mut self, index: &RegionIndex) -> Option<&Region<I>>;
@@ -98,11 +98,11 @@ pub trait RegionManager<'a, C, I>
 }
 
 
-pub trait ChunkedWorld<'a, C, I, M, T>
+pub trait ChunkedWorld<'a, I, C, M, T>
     where I: Index,
           C: ManagedChunk,
-          M: RegionManager<'a, C, I>,
-          T: ChunkedTerrain<'a, C, I, M> {
+          M: RegionManager<'a, I, C>,
+          T: ChunkedTerrain<'a, I, C, M> {
 
     fn generate_chunk(&mut self, index: &I) -> SerialResult<()>;
     fn update_chunks(&mut self) -> SerialResult<()>;
