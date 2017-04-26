@@ -25,7 +25,7 @@ pub trait ManagedChunk: Serialize + Deserialize {
 
 /// Describes a struct that can load and unload parts of the world. Used
 /// alongside a Manager for keeping track of unsaved chunks.
-pub trait Chunked<'a, H, I, C, R, M>
+pub trait ChunkedTerrain<'a, C, H, I, R, M>
     where I:Index,
           C: ManagedChunk,
           H: Seek + Write + Read,
@@ -34,39 +34,12 @@ pub trait Chunked<'a, H, I, C, R, M>
 
     fn load_chunk_internal(&mut self, chunk: C, index: &I) -> SerialResult<()>;
     fn unload_chunk_internal(&mut self, index: &I) -> SerialResult<C>;
-    fn generate_chunk(&mut self, index: &I) -> SerialResult<()>;
-    fn update_chunks(&mut self) -> SerialResult<()>;
 
     fn chunk_loaded(&self, index: &I) -> bool;
     fn chunk_indices(&self) -> Vec<I>;
     fn chunk_count(&self) -> usize;
 
     fn regions_mut(&mut self) -> &mut M;
-
-    fn save(self) -> SerialResult<()>;
-
-    fn load_chunk(&mut self, index: &I) -> SerialResult<()> {
-        match self.load_chunk_from_region(index) {
-            Err(SerialError::NoChunkInSavefile(_)) => {
-                let old_count = self.chunk_count();
-                if self.chunk_loaded(index) {
-                    return Err(ChunkAlreadyLoaded(index.x(), index.y()));
-                }
-
-                self.generate_chunk(index)?;
-
-                assert_eq!(self.chunk_count(), old_count + 1,
-                           "Chunk wasn't inserted into world!");
-
-                // The region this chunk was created in needs to know of the chunk
-                // that was created in-game but nonexistent on disk.
-                self.regions_mut().notify_chunk_creation(index);
-            },
-            Err(e) => panic!("{:?}", e),
-            Ok(()) => (),
-        }
-        Ok(())
-    }
 
     fn load_chunk_from_region(&mut self, index: &I) -> SerialResult<()> {
         let old_count = self.chunk_count();
@@ -85,20 +58,6 @@ pub trait Chunked<'a, H, I, C, R, M>
                    "Chunk wasn't inserted into world!");
 
         Ok(())
-    }
-
-    fn unload_chunk(&mut self, index: &I) -> SerialResult<()> {
-        let old_count = self.chunk_count();
-        let chunk = match self.unload_chunk_internal(index) {
-            Ok(c) => c,
-            Err(e) => return Err(e),
-        };
-
-        assert_eq!(self.chunk_count(), old_count - 1,
-                   "Chunk wasn't removed from world!");
-
-        let region = self.regions_mut().get_for_chunk(index);
-        region.write_chunk(chunk, index)
     }
 }
 
@@ -139,5 +98,57 @@ pub trait Manager<'a, C, H, I, R>
         }
 
         self.get_mut(&region_index).unwrap()
+    }
+}
+
+
+pub trait ChunkedWorld<'a, C, H, I, R, M, T>
+    where I: Index,
+          C: ManagedChunk,
+          H: Seek + Write + Read,
+          R: ManagedRegion<'a, C, H, I>,
+          M: Manager<'a, C, H, I, R>,
+          T: ChunkedTerrain<'a, C, H, I, R, M> {
+
+    fn generate_chunk(&mut self, index: &I) -> SerialResult<()>;
+    fn update_chunks(&mut self) -> SerialResult<()>;
+    fn terrain(&mut self) -> &mut T;
+    fn save(self) -> SerialResult<()>;
+
+    fn load_chunk(&mut self, index: &I) -> SerialResult<()> {
+        match self.terrain().load_chunk_from_region(index) {
+            Err(SerialError::NoChunkInSavefile(_)) => {
+                let old_count = self.terrain().chunk_count();
+                if self.terrain().chunk_loaded(index) {
+                    return Err(ChunkAlreadyLoaded(index.x(), index.y()));
+                }
+
+                self.generate_chunk(index)?;
+
+                assert_eq!(self.terrain().chunk_count(), old_count + 1,
+                           "Chunk wasn't inserted into world!");
+
+                // The region this chunk was created in needs to know of the chunk
+                // that was created in-game but nonexistent on disk.
+                self.terrain().regions_mut().notify_chunk_creation(index);
+            },
+            Err(e) => panic!("{:?}", e),
+            Ok(()) => (),
+        }
+        Ok(())
+    }
+
+    fn unload_chunk(&mut self, index: &I) -> SerialResult<()> {
+        let old_count = self.terrain().chunk_count();
+        let chunk = match self.terrain().unload_chunk_internal(index) {
+            Ok(c) => c,
+            Err(e) => return Err(e),
+        };
+
+        assert_eq!(self.terrain().chunk_count(), old_count - 1,
+                   "Chunk wasn't removed from world!");
+
+        let region = self.terrain().regions_mut().get_for_chunk(index);
+        region.write_chunk(chunk, index)
     }
 }

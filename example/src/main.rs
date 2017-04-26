@@ -15,7 +15,7 @@ mod dude;
 mod point;
 mod world;
 
-use infinigen::Chunked;
+use infinigen::ChunkedWorld;
 use pancurses::Input;
 
 use cell::CellKind;

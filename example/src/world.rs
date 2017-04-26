@@ -232,12 +232,12 @@ impl World {
 
 const UPDATE_RADIUS: i32 = 2;
 
-impl<'a> Chunked<'a, File,
-                 ChunkIndex,
-                 SerialChunk,
-                 Region<ChunkIndex>,
-                 RegionManager<ChunkIndex>> for World
-    where Region<ChunkIndex>: ManagedRegion<'a, SerialChunk, File, ChunkIndex> {
+impl<'a> ChunkedTerrain<'a, SerialChunk,
+                        File,
+                        ChunkIndex,
+                        Region<ChunkIndex>,
+                        RegionManager<ChunkIndex>> for World
+     {
 
     fn load_chunk_internal(&mut self, chunk: SerialChunk, index: &ChunkIndex) -> Result<(), SerialError> {
         for (pos, dude) in chunk.dudes.into_iter() {
@@ -264,22 +264,6 @@ impl<'a> Chunked<'a, File,
         Ok(serial)
     }
 
-    fn generate_chunk(&mut self, index: &ChunkIndex) -> SerialResult<()> {
-        self.chunks.insert(index.clone(), Chunk::new(index, &self.gen));
-
-        for i in 4..8 {
-            for j in 4..8 {
-                let chunk_pos = ChunkPosition::from(Point::new(i, j));
-                let cell_pos = Chunk::world_position_at(&index, &chunk_pos);
-                if self.can_walk(&cell_pos) {
-                    self.place_dude(cell_pos);
-                }
-            }
-        }
-
-        Ok(())
-    }
-
     fn regions_mut(&mut self) -> &mut RegionManager<ChunkIndex> {
         &mut self.regions
     }
@@ -294,6 +278,27 @@ impl<'a> Chunked<'a, File,
 
     fn chunk_count(&self) -> usize {
         self.chunks.len()
+    }
+}
+
+impl<'a> ChunkedWorld<'a, SerialChunk, File, ChunkIndex, Region<ChunkIndex>,
+                      RegionManager<ChunkIndex>, World> for World
+    where Region<ChunkIndex>: ManagedRegion<'a, SerialChunk, File, ChunkIndex> {
+    fn terrain(&mut self) -> &mut World { self }
+    fn generate_chunk(&mut self, index: &ChunkIndex) -> SerialResult<()> {
+        self.chunks.insert(index.clone(), Chunk::new(index, &self.gen));
+
+        for i in 4..8 {
+            for j in 4..8 {
+                let chunk_pos = ChunkPosition::from(Point::new(i, j));
+                let cell_pos = Chunk::world_position_at(&index, &chunk_pos);
+                if self.can_walk(&cell_pos) {
+                    self.place_dude(cell_pos);
+                }
+            }
+        }
+
+        Ok(())
     }
 
     fn update_chunks(&mut self) -> Result<(), SerialError>{
