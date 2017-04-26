@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::fmt;
 use std::io;
 use std::fs::File;
@@ -84,20 +84,6 @@ impl<'a, I: Index, C: ManagedChunk> ManagedRegion<'a, C, File, I> for Region<I> 
         self.unsaved_chunks.len() == 0
     }
 }
-
-/// Implementation of a region manager.
-pub struct RegionManager<I: Index> {
-    pub regions: HashMap<RegionIndex, Region<I>>,
-}
-
-impl<I: Index> RegionManager<I> {
-    pub fn new() -> Self {
-        RegionManager {
-            regions: HashMap::new(),
-        }
-    }
-}
-
 
 #[cfg(never)]
 #[cfg(test)]

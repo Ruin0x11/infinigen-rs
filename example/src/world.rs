@@ -17,45 +17,59 @@ impl Index for ChunkIndex {
     fn y(&self) -> i32 { self.0.y }
 }
 
-pub fn get_filename(index: &RegionIndex) -> String {
+/// Implementation of a region manager.
+pub struct RegionManager<I: Index> {
+    pub regions: HashMap<RegionIndex, Region<I>>,
+}
+
+impl<I: Index> RegionManager<I> {
+    pub fn new() -> Self {
+        RegionManager {
+            regions: HashMap::new(),
+        }
+    }
+}
+
+fn get_filename(index: &RegionIndex) -> String {
     format!("r.{}.{}.sr", index.0, index.1)
 }
 
-impl<'a> Manager<'a, SerialChunk, File, ChunkIndex, Region<ChunkIndex>> for RegionManager<ChunkIndex>
-    where Region<ChunkIndex>: ManagedRegion<'a, SerialChunk, File, ChunkIndex>{
-    fn load(&self, index: RegionIndex) -> Region<ChunkIndex> {
-        // println!("LOAD REGION {}", index);
+impl<'a, C: ManagedChunk> Manager<'a, C, File, ChunkIndex, Region<ChunkIndex>> for RegionManager<ChunkIndex>
+    where Region<ChunkIndex>: ManagedRegion<'a, C, File, ChunkIndex>{
+    fn load(&mut self, index: RegionIndex) {
         let filename = get_filename(&index);
 
         let handle = Region::get_region_file(filename);
 
-        Region {
+        let region = Region {
             handle: Box::new(handle),
             unsaved_chunks: HashSet::new(),
-        }
+        };
+
+        self.regions.insert(index.clone(), region);
     }
 
-    fn prune_empty(&mut self) {
-        let indices: Vec<RegionIndex> = self.regions.iter().map(|(i, _)| i).cloned().collect();
-        for idx in indices {
-            if self.regions.get(&idx).map_or(false, |r: &Region<ChunkIndex>| r.is_empty()) {
-                // println!("UNLOAD REGION {}", idx);
-                self.regions.remove(&idx);
-            }
-        }
+    fn region_indices(&self) -> Vec<RegionIndex> {
+        self.regions.iter().map(|(i, _)| i).cloned().collect()
     }
 
-    fn get_for_chunk(&mut self, chunk_index: &ChunkIndex) -> &mut Region<ChunkIndex> {
-        let region_index = Region::get_region_index(chunk_index);
+    fn get(&mut self, index: &RegionIndex) -> Option<&Region<ChunkIndex>> {
+        self.regions.get(index)
+    }
 
-        if !self.regions.contains_key(&region_index) {
-            let region = self.load(region_index);
-            self.regions.insert(region_index.clone(), region);
-        }
+    fn get_mut(&mut self, index: &RegionIndex) -> Option<&mut Region<ChunkIndex>> {
+        self.regions.get_mut(index)
+    }
 
-        self.regions.get_mut(&region_index).unwrap()
+    fn remove(&mut self, index: &RegionIndex) {
+        self.regions.remove(index);
+    }
+
+    fn region_loaded(&self, index: &RegionIndex) -> bool {
+        self.regions.contains_key(index)
     }
 }
+
 
 pub type WorldPosition = Point;
 
@@ -218,7 +232,13 @@ impl World {
 
 const UPDATE_RADIUS: i32 = 2;
 
-impl<'a> Chunked<'a, File, ChunkIndex, SerialChunk, Region<ChunkIndex>, RegionManager<ChunkIndex>> for World {
+impl<'a> Chunked<'a, File,
+                 ChunkIndex,
+                 SerialChunk,
+                 Region<ChunkIndex>,
+                 RegionManager<ChunkIndex>> for World
+    where Region<ChunkIndex>: ManagedRegion<'a, SerialChunk, File, ChunkIndex> {
+
     fn load_chunk_internal(&mut self, chunk: SerialChunk, index: &ChunkIndex) -> Result<(), SerialError> {
         for (pos, dude) in chunk.dudes.into_iter() {
             // println!("dude!");
@@ -297,7 +317,6 @@ impl<'a> Chunked<'a, File, ChunkIndex, SerialChunk, Region<ChunkIndex>, RegionMa
 
         for idx in relevant.iter() {
             if !self.chunk_loaded(idx) {
-                // println!("Loading chunk {}", idx);
                 self.load_chunk(idx)?;
             }
         }

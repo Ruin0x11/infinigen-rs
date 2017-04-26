@@ -110,12 +110,34 @@ pub trait Manager<'a, C, H, I, R>
           H: Seek + Read + Write,
           R: ManagedRegion<'a, C, H, I> {
 
-    fn load(&self, index: RegionIndex) -> R;
-    fn get_for_chunk(&mut self, chunk_index: &I) -> &mut R;
-    fn prune_empty(&mut self);
+    fn load(&mut self, index: RegionIndex);
+    fn get(&mut self, index: &RegionIndex) -> Option<&R>;
+    fn get_mut(&mut self, index: &RegionIndex) -> Option<&mut R>;
+    fn remove(&mut self, index: &RegionIndex);
+    fn region_loaded(&self, index: &RegionIndex) -> bool;
+    fn region_indices(&self) -> Vec<RegionIndex>;
 
     fn notify_chunk_creation(&mut self, chunk_index: &I) {
         let region = self.get_for_chunk(chunk_index);
         region.receive_created_chunk(chunk_index);
+    }
+
+    fn prune_empty(&mut self) {
+        let indices = self.region_indices();
+        for idx in indices {
+            if self.get(&idx).map_or(false, |r: &R| r.is_empty()) {
+                self.remove(&idx);
+            }
+        }
+    }
+
+    fn get_for_chunk(&mut self, chunk_index: &I) -> &mut R {
+        let region_index = R::get_region_index(chunk_index);
+
+        if !self.region_loaded(&region_index) {
+            self.load(region_index);
+        }
+
+        self.get_mut(&region_index).unwrap()
     }
 }
