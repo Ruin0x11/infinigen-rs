@@ -22,42 +22,6 @@ pub trait ManagedChunk: Serialize + Deserialize {
     const REGION_WIDTH: i32 = 16;
 }
 
-/// Describes a struct that can load and unload parts of the world. Used
-/// alongside a Manager for keeping track of unsaved chunks.
-pub trait ChunkedTerrain<'a, I, C, M>
-    where I:Index,
-          C: ManagedChunk,
-          M: RegionManager<'a, I, C> {
-
-    fn load_chunk_internal(&mut self, chunk: C, index: &I) -> SerialResult<()>;
-    fn unload_chunk_internal(&mut self, index: &I) -> SerialResult<C>;
-
-    fn chunk_loaded(&self, index: &I) -> bool;
-    fn chunk_indices(&self) -> Vec<I>;
-    fn chunk_count(&self) -> usize;
-
-    fn regions_mut(&mut self) -> &mut M;
-
-    fn load_chunk_from_region(&mut self, index: &I) -> SerialResult<()> {
-        let old_count = self.chunk_count();
-        let chunk: C;
-        {
-            let region = self.regions_mut().get_for_chunk(index);
-            chunk = match region.read_chunk(index) {
-                Ok(c) => c,
-                Err(e) => return Err(e),
-            };
-        }
-
-        self.load_chunk_internal(chunk, index)?;
-
-        assert_eq!(self.chunk_count(), old_count + 1,
-                   "Chunk wasn't inserted into world!");
-
-        Ok(())
-    }
-}
-
 /// Describes a struct that is responsible for keeping track of multiple
 /// ManagedRegions and retrieving the correct region for a given chunk index.
 pub trait RegionManager<'a, I, C>
@@ -97,12 +61,46 @@ pub trait RegionManager<'a, I, C>
     }
 }
 
+/// Describes a struct that can load and unload parts of the world. Used
+/// alongside a Manager for keeping track of unsaved chunks.
+pub trait ChunkedTerrain<'a, I, C, M>
+    where I:Index,
+          C: ManagedChunk,
+          M: RegionManager<'a, I, C> {
+
+    fn chunk_loaded(&self, index: &I) -> bool;
+    fn chunk_indices(&self) -> Vec<I>;
+    fn chunk_count(&self) -> usize;
+
+    fn regions_mut(&mut self) -> &mut M;
+}
 
 pub trait ChunkedWorld<'a, I, C, M, T>
     where I: Index,
           C: ManagedChunk,
           M: RegionManager<'a, I, C>,
           T: ChunkedTerrain<'a, I, C, M> {
+    fn load_chunk_internal(&mut self, chunk: C, index: &I) -> SerialResult<()>;
+    fn unload_chunk_internal(&mut self, index: &I) -> SerialResult<C>;
+
+    fn load_chunk_from_region(&mut self, index: &I) -> SerialResult<()> {
+        let old_count = self.terrain().chunk_count();
+        let chunk: C;
+        {
+            let region = self.terrain().regions_mut().get_for_chunk(index);
+            chunk = match region.read_chunk(index) {
+                Ok(c) => c,
+                Err(e) => return Err(e),
+            };
+        }
+
+        self.load_chunk_internal(chunk, index)?;
+
+        assert_eq!(self.terrain().chunk_count(), old_count + 1,
+                   "Chunk wasn't inserted into world!");
+
+        Ok(())
+    }
 
     fn generate_chunk(&mut self, index: &I) -> SerialResult<()>;
     fn update_chunks(&mut self) -> SerialResult<()>;
@@ -110,7 +108,7 @@ pub trait ChunkedWorld<'a, I, C, M, T>
     fn save(self) -> SerialResult<()>;
 
     fn load_chunk(&mut self, index: &I) -> SerialResult<()> {
-        match self.terrain().load_chunk_from_region(index) {
+        match self.load_chunk_from_region(index) {
             Err(SerialError::NoChunkInSavefile(_)) => {
                 let old_count = self.terrain().chunk_count();
                 if self.terrain().chunk_loaded(index) {
@@ -134,7 +132,7 @@ pub trait ChunkedWorld<'a, I, C, M, T>
 
     fn unload_chunk(&mut self, index: &I) -> SerialResult<()> {
         let old_count = self.terrain().chunk_count();
-        let chunk = match self.terrain().unload_chunk_internal(index) {
+        let chunk = match self.unload_chunk_internal(index) {
             Ok(c) => c,
             Err(e) => return Err(e),
         };

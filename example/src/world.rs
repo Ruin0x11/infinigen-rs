@@ -229,6 +229,27 @@ impl World {
 const UPDATE_RADIUS: i32 = 2;
 
 impl<'a> ChunkedTerrain<'a, ChunkIndex, SerialChunk, Terrain> for World {
+    fn regions_mut(&mut self) -> &mut Terrain {
+        &mut self.regions
+    }
+
+    fn chunk_loaded(&self, index: &ChunkIndex) -> bool {
+        self.chunks.contains_key(index)
+    }
+
+    fn chunk_indices(&self) -> Vec<ChunkIndex> {
+        self.chunks.iter().map(|(&i, _)| i).collect()
+    }
+
+    fn chunk_count(&self) -> usize {
+        self.chunks.len()
+    }
+}
+
+impl<'a> ChunkedWorld<'a, ChunkIndex, SerialChunk, Terrain, World> for World
+    where Terrain: RegionManager<'a, ChunkIndex, SerialChunk> {
+    fn terrain(&mut self) -> &mut World { self }
+
     fn load_chunk_internal(&mut self, chunk: SerialChunk, index: &ChunkIndex) -> Result<(), SerialError> {
         for (pos, dude) in chunk.dudes.into_iter() {
             // println!("dude!");
@@ -254,26 +275,6 @@ impl<'a> ChunkedTerrain<'a, ChunkIndex, SerialChunk, Terrain> for World {
         Ok(serial)
     }
 
-    fn regions_mut(&mut self) -> &mut Terrain {
-        &mut self.regions
-    }
-
-    fn chunk_loaded(&self, index: &ChunkIndex) -> bool {
-        self.chunks.contains_key(index)
-    }
-
-    fn chunk_indices(&self) -> Vec<ChunkIndex> {
-        self.chunks.iter().map(|(&i, _)| i).collect()
-    }
-
-    fn chunk_count(&self) -> usize {
-        self.chunks.len()
-    }
-}
-
-impl<'a> ChunkedWorld<'a, ChunkIndex, SerialChunk, Terrain, World> for World
-    where Terrain: RegionManager<'a, ChunkIndex, SerialChunk> {
-    fn terrain(&mut self) -> &mut World { self }
 
     fn generate_chunk(&mut self, index: &ChunkIndex) -> SerialResult<()> {
         self.chunks.insert(index.clone(), Chunk::new(index, &self.gen));
