@@ -59,19 +59,6 @@ pub struct Region<I: Index> {
     pub unsaved_chunks: HashSet<I>,
 }
 
-// fn compress_data(bytes: &Vec<u8>) -> SerialResult<Vec<u8>> {
-//     let mut e = ZlibEncoder::new(Vec::new(), Compression::Default);
-//     e.write(bytes.as_slice())?;
-//     e.finish().map_err(SerialError::from)
-// }
-
-// fn decompress_data(bytes: &Vec<u8>) -> SerialResult<Vec<u8>> {
-//     let mut d = ZlibDecoder::new(bytes.as_slice());
-//     let mut buf = Vec::new();
-//     d.read(&mut buf).map_err(SerialError::from)?;
-//     Ok(buf)
-// }
-
 impl<'a, I: Index, C: ManagedChunk> ManagedRegion<'a, C, File, I> for Region<I> {
     fn handle(&mut self) -> &mut File {
         &mut self.handle

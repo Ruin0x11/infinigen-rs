@@ -7,3 +7,4 @@ authors = ["Ian Pickering <ipickering2@gmail.com>"]
 serde = "0.9.13"
 serde_derive = "0.9.13"
 bincode = "0.7.0"
+flate2 = "0.2.19"

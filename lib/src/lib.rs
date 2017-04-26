@@ -1,6 +1,6 @@
 #![feature(associated_consts)]
 extern crate bincode;
-// extern crate flate2;
+extern crate flate2;
 extern crate serde;
 
 mod region;

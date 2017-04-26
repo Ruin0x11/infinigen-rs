@@ -28,7 +28,6 @@ fn main() {
 }
 
 fn go() {
-    // let mut world = World::new(Point::new(128, 128));
     let mut world = World::new_empty();
 
     canvas::show_splash();

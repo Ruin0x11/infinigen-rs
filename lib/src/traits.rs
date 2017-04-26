@@ -46,20 +46,24 @@ pub trait Chunked<'a, H, I, C, R, M>
     fn save(self) -> SerialResult<()>;
 
     fn load_chunk(&mut self, index: &I) -> SerialResult<()> {
-        if let Err(_) = self.load_chunk_from_region(index) {
-            let old_count = self.chunk_count();
-            if self.chunk_loaded(index) {
-                return Err(ChunkAlreadyLoaded(index.x(), index.y()));
-            }
+        match self.load_chunk_from_region(index) {
+            Err(SerialError::NoChunkInSavefile(_)) => {
+                let old_count = self.chunk_count();
+                if self.chunk_loaded(index) {
+                    return Err(ChunkAlreadyLoaded(index.x(), index.y()));
+                }
 
-            self.generate_chunk(index)?;
+                self.generate_chunk(index)?;
 
-            assert_eq!(self.chunk_count(), old_count + 1,
-                       "Chunk wasn't inserted into world!");
+                assert_eq!(self.chunk_count(), old_count + 1,
+                           "Chunk wasn't inserted into world!");
 
-            // The region this chunk was created in needs to know of the chunk
-            // that was created in-game but nonexistent on disk.
-            self.regions_mut().notify_chunk_creation(index);
+                // The region this chunk was created in needs to know of the chunk
+                // that was created in-game but nonexistent on disk.
+                self.regions_mut().notify_chunk_creation(index);
+            },
+            Err(e) => panic!("{:?}", e),
+            Ok(()) => (),
         }
         Ok(())
     }

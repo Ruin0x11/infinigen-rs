@@ -4,6 +4,9 @@ use std::fs::{File, OpenOptions};
 use std::path::Path;
 
 use bincode::{self, Infinite};
+use flate2::write::ZlibEncoder;
+use flate2::read::ZlibDecoder;
+use flate2::Compression;
 
 use region::*;
 use traits::{ManagedChunk, Index};
@@ -14,6 +17,41 @@ fn pad_byte_vec(bytes: &mut Vec<u8>, size: usize) {
     for _ in 0..(size - (bytes.len() % size)) {
         bytes.push(0);
     }
+}
+
+fn serialize_u32(val: u32) -> [u8; 4] {
+    let bits = u32::from_be(val);
+    [(bits >> 24) as u8, (bits >> 16) as u8, (bits >> 8) as u8, bits as u8]
+}
+
+fn deserialize_u32(buf: &[u8]) -> u32 {
+    (((buf[0] as u32) << 24) |
+     ((buf[1] as u32) << 16) |
+     ((buf[2] as u32) <<  8) |
+     ((buf[3] as u32) <<  0)).to_be()
+}
+
+fn compress_data(bytes: &Vec<u8>) -> SerialResult<Vec<u8>> {
+    let mut e = ZlibEncoder::new(Vec::new(), Compression::Default);
+    e.write(bytes.as_slice())?;
+    let buf = e.finish().map_err(SerialError::from)?;
+
+    let size: u32 = buf.len() as u32;
+    let mut header = serialize_u32(size).to_vec();
+    header.extend(buf.as_slice());
+
+    Ok(header)
+}
+
+fn decompress_data(bytes: &Vec<u8>) -> SerialResult<Vec<u8>> {
+    let (header, _) = bytes.split_at(4);
+    let data_length = deserialize_u32(header) as usize;
+
+    let mut d = ZlibDecoder::new(&bytes[4..4 + data_length]);
+    let mut buf = Vec::new();
+    d.read_to_end(&mut buf).map_err(SerialError::from)?;
+
+    Ok(buf)
 }
 
 /// Describes a struct responsible for saving and loading a set of chunks in an
@@ -105,13 +143,9 @@ pub trait ManagedRegion<'a, C, H, I: Index>
         assert!(self.chunk_unsaved(index));
 
         let mut encoded: Vec<u8> = bincode::serialize(&chunk, Infinite)?;
-        // FIXME: Compression corrupts the chunk data on load, because there is
-        // no way to know the amount of padding added and the decompressor
-        // treats the padding as part of the file. Would probably have to
-        // just compress the entire region files after closing the handles.
 
-        // let mut compressed = compress_data(&mut encoded)?;
-        pad_byte_vec(&mut encoded, C::SECTOR_SIZE);
+        let mut compressed = compress_data(&mut encoded)?;
+        pad_byte_vec(&mut compressed, C::SECTOR_SIZE);
 
         let normalized_idx = self.normalize_chunk_index(index);
 
@@ -119,12 +153,12 @@ pub trait ManagedRegion<'a, C, H, I: Index>
 
         match size {
             Some(size) => {
-                assert!(size >= encoded.len(),
+                assert!(size >= compressed.len(),
                         "Chunk data grew larger than allocated sector size! \
                          Consider using a larger sector size.");
-                self.update_chunk(encoded, offset)?;
+                self.update_chunk(compressed, offset)?;
             },
-            None       => { self.append_chunk(encoded, &normalized_idx)?; },
+            None       => { self.append_chunk(compressed, &normalized_idx)?; },
         }
         self.mark_as_saved(index);
         Ok(())
@@ -166,13 +200,16 @@ pub trait ManagedRegion<'a, C, H, I: Index>
 
         let buf = self.read_bytes(offset, size);
 
-        // let decompressed = decompress_data(&buf)?;
-        match bincode::deserialize(buf.clone().as_slice()) {
+        let decompressed = decompress_data(&buf)?;
+        match bincode::deserialize(decompressed.as_slice()) {
             Ok(dat) => {
                 self.mark_as_unsaved(index);
                 Ok(dat)
             },
-            Err(e)  => Err(SerialError::from(e)),
+            Err(e)  => {
+                println!("Bincode error");
+                Err (SerialError::from(e))
+            },
         }
     }
 
@@ -218,4 +255,26 @@ pub trait ManagedRegion<'a, C, H, I: Index>
     fn receive_created_chunk(&mut self, index: &I);
 
     fn is_empty(&self) -> bool;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_decompress() {
+        let data = vec![1,2,3,4];
+
+        let mut e = ZlibEncoder::new(Vec::new(), Compression::Default);
+        e.write(data.as_slice()).unwrap();
+        let buf = e.finish().map_err(SerialError::from).unwrap();
+
+        println!("{:?}", buf);
+
+        let compress = compress_data(&data).unwrap();
+        println!("{:?}", compress);
+
+        let decompress = decompress_data(&compress).unwrap();
+        assert_eq!(decompress, data);
+    }
 }
