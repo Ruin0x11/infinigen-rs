@@ -1,5 +1,4 @@
 use std::collections::{HashSet, hash_map, HashMap};
-use std::fs::File;
 
 use noise::{Perlin, Seedable};
 use infinigen::*;
@@ -18,13 +17,13 @@ impl Index for ChunkIndex {
 }
 
 /// Implementation of a region manager.
-pub struct RegionManager<I: Index> {
-    pub regions: HashMap<RegionIndex, Region<I>>,
+pub struct Terrain {
+    pub regions: HashMap<RegionIndex, Region<ChunkIndex>>,
 }
 
-impl<I: Index> RegionManager<I> {
+impl Terrain {
     pub fn new() -> Self {
-        RegionManager {
+        Terrain {
             regions: HashMap::new(),
         }
     }
@@ -34,8 +33,8 @@ fn get_filename(index: &RegionIndex) -> String {
     format!("r.{}.{}.sr", index.0, index.1)
 }
 
-impl<'a, C: ManagedChunk> Manager<'a, C, File, ChunkIndex, Region<ChunkIndex>> for RegionManager<ChunkIndex>
-    where Region<ChunkIndex>: ManagedRegion<'a, C, File, ChunkIndex>{
+impl<'a, C: ManagedChunk> RegionManager<'a, C, ChunkIndex> for Terrain
+    where Region<ChunkIndex>: ManagedRegion<'a, C, ChunkIndex>{
     fn load(&mut self, index: RegionIndex) {
         let filename = get_filename(&index);
 
@@ -80,7 +79,7 @@ impl WorldPosition {
 }
 
 pub struct World {
-    regions: RegionManager<ChunkIndex>,
+    regions: Terrain,
     chunks: HashMap<ChunkIndex, Chunk>,
     dudes: HashMap<WorldPosition, Dude>,
     pub observer: WorldPosition,
@@ -91,7 +90,7 @@ pub struct World {
 impl World {
     pub fn new_empty() -> Self {
         World {
-            regions: RegionManager::new(),
+            regions: Terrain::new(),
             chunks: HashMap::new(),
             dudes: HashMap::new(),
             observer: WorldPosition::new(0, 0),
@@ -233,10 +232,8 @@ impl World {
 const UPDATE_RADIUS: i32 = 2;
 
 impl<'a> ChunkedTerrain<'a, SerialChunk,
-                        File,
                         ChunkIndex,
-                        Region<ChunkIndex>,
-                        RegionManager<ChunkIndex>> for World
+                        Terrain> for World
      {
 
     fn load_chunk_internal(&mut self, chunk: SerialChunk, index: &ChunkIndex) -> Result<(), SerialError> {
@@ -264,7 +261,7 @@ impl<'a> ChunkedTerrain<'a, SerialChunk,
         Ok(serial)
     }
 
-    fn regions_mut(&mut self) -> &mut RegionManager<ChunkIndex> {
+    fn regions_mut(&mut self) -> &mut Terrain {
         &mut self.regions
     }
 
@@ -281,9 +278,8 @@ impl<'a> ChunkedTerrain<'a, SerialChunk,
     }
 }
 
-impl<'a> ChunkedWorld<'a, SerialChunk, File, ChunkIndex, Region<ChunkIndex>,
-                      RegionManager<ChunkIndex>, World> for World
-    where Region<ChunkIndex>: ManagedRegion<'a, SerialChunk, File, ChunkIndex> {
+impl<'a> ChunkedWorld<'a, SerialChunk, ChunkIndex, Terrain, World> for World
+    where Terrain: RegionManager<'a, SerialChunk, ChunkIndex> {
     fn terrain(&mut self) -> &mut World { self }
     fn generate_chunk(&mut self, index: &ChunkIndex) -> SerialResult<()> {
         self.chunks.insert(index.clone(), Chunk::new(index, &self.gen));

@@ -1,5 +1,4 @@
 use std::hash::Hash;
-use std::io::prelude::*;
 
 use serde::Serialize;
 use serde::de::Deserialize;
@@ -25,12 +24,10 @@ pub trait ManagedChunk: Serialize + Deserialize {
 
 /// Describes a struct that can load and unload parts of the world. Used
 /// alongside a Manager for keeping track of unsaved chunks.
-pub trait ChunkedTerrain<'a, C, H, I, R, M>
+pub trait ChunkedTerrain<'a, C, I, M>
     where I:Index,
           C: ManagedChunk,
-          H: Seek + Write + Read,
-          R: ManagedRegion<'a, C, H, I>,
-          M: Manager<'a, C, H, I, R> {
+          M: RegionManager<'a, C, I> {
 
     fn load_chunk_internal(&mut self, chunk: C, index: &I) -> SerialResult<()>;
     fn unload_chunk_internal(&mut self, index: &I) -> SerialResult<C>;
@@ -63,15 +60,14 @@ pub trait ChunkedTerrain<'a, C, H, I, R, M>
 
 /// Describes a struct that is responsible for keeping track of multiple
 /// ManagedRegions and retrieving the correct region for a given chunk index.
-pub trait Manager<'a, C, H, I, R>
+pub trait RegionManager<'a, C, I>
     where I:Index,
           C: ManagedChunk,
-          H: Seek + Read + Write,
-          R: ManagedRegion<'a, C, H, I> {
+          Region<I>: ManagedRegion<'a, C, I> {
 
     fn load(&mut self, index: RegionIndex);
-    fn get(&mut self, index: &RegionIndex) -> Option<&R>;
-    fn get_mut(&mut self, index: &RegionIndex) -> Option<&mut R>;
+    fn get(&mut self, index: &RegionIndex) -> Option<&Region<I>>;
+    fn get_mut(&mut self, index: &RegionIndex) -> Option<&mut Region<I>>;
     fn remove(&mut self, index: &RegionIndex);
     fn region_loaded(&self, index: &RegionIndex) -> bool;
     fn region_indices(&self) -> Vec<RegionIndex>;
@@ -84,14 +80,14 @@ pub trait Manager<'a, C, H, I, R>
     fn prune_empty(&mut self) {
         let indices = self.region_indices();
         for idx in indices {
-            if self.get(&idx).map_or(false, |r: &R| r.is_empty()) {
+            if self.get(&idx).map_or(false, |r: &Region<I>| r.is_empty()) {
                 self.remove(&idx);
             }
         }
     }
 
-    fn get_for_chunk(&mut self, chunk_index: &I) -> &mut R {
-        let region_index = R::get_region_index(chunk_index);
+    fn get_for_chunk(&mut self, chunk_index: &I) -> &mut Region<I> {
+        let region_index = Region::get_region_index(chunk_index);
 
         if !self.region_loaded(&region_index) {
             self.load(region_index);
@@ -102,13 +98,11 @@ pub trait Manager<'a, C, H, I, R>
 }
 
 
-pub trait ChunkedWorld<'a, C, H, I, R, M, T>
+pub trait ChunkedWorld<'a, C, I, M, T>
     where I: Index,
           C: ManagedChunk,
-          H: Seek + Write + Read,
-          R: ManagedRegion<'a, C, H, I>,
-          M: Manager<'a, C, H, I, R>,
-          T: ChunkedTerrain<'a, C, H, I, R, M> {
+          M: RegionManager<'a, C, I>,
+          T: ChunkedTerrain<'a, C, I, M> {
 
     fn generate_chunk(&mut self, index: &I) -> SerialResult<()>;
     fn update_chunks(&mut self) -> SerialResult<()>;

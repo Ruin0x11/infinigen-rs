@@ -59,7 +59,7 @@ pub struct Region<I: Index> {
     pub unsaved_chunks: HashSet<I>,
 }
 
-impl<'a, I: Index, C: ManagedChunk> ManagedRegion<'a, C, File, I> for Region<I> {
+impl<'a, I: Index, C: ManagedChunk> ManagedRegion<'a, C, I> for Region<I> {
     fn handle(&mut self) -> &mut File {
         &mut self.handle
     }
