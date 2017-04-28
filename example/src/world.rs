@@ -248,7 +248,8 @@ impl<'a> ChunkedTerrain<'a, ChunkIndex, SerialChunk, Terrain> for World {
 
 impl<'a> ChunkedWorld<'a, ChunkIndex, SerialChunk, Terrain, World> for World
     where Terrain: RegionManager<'a, ChunkIndex, SerialChunk> {
-    fn terrain(&mut self) -> &mut World { self }
+    fn terrain(&self) -> &World { self }
+    fn terrain_mut(&mut self) -> &mut World { self }
 
     fn load_chunk_internal(&mut self, chunk: SerialChunk, index: &ChunkIndex) -> Result<(), SerialError> {
         for (pos, dude) in chunk.dudes.into_iter() {
