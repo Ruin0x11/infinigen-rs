@@ -108,20 +108,20 @@ pub trait ManagedRegion<'a, I, C>
 
     /// Returns the handle to a region file. If it doesn't exist, it is created
     /// and the lookup table initialized.
-    fn get_region_file(filename: String) -> File {
-        if !Path::new(&filename).exists() {
+    fn get_region_file<T: AsRef<Path>>(path: T) -> File {
+        if !path.as_ref().exists() {
             let mut file = OpenOptions::new()
                 .read(true)
                 .write(true)
                 .create(true)
-                .open(filename) .unwrap();
+                .open(path.as_ref()).unwrap();
             file.write(&vec![0u8; Self::lookup_table_size() as usize]).unwrap();
             file
         } else {
             OpenOptions::new()
                 .read(true)
                 .write(true)
-                .open(filename).unwrap()
+                .open(path.as_ref()).unwrap()
         }
     }
 
