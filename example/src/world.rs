@@ -330,7 +330,7 @@ impl<'a> ChunkedWorld<'a, ChunkIndex, SerialChunk, Terrain, World> for World
         Ok(())
     }
 
-    fn save(mut self) -> Result<(), SerialError> {
+    fn save(&mut self) -> Result<(), SerialError> {
         let indices = self.chunk_indices();
         for index in indices.iter() {
             self.unload_chunk(index)?;

@@ -106,7 +106,7 @@ pub trait ChunkedWorld<'a, I, C, M, T>
     fn update_chunks(&mut self) -> SerialResult<()>;
     fn terrain(&self) -> &T;
     fn terrain_mut(&mut self) -> &mut T;
-    fn save(self) -> SerialResult<()>;
+    fn save(&mut self) -> SerialResult<()>;
 
     fn load_chunk(&mut self, index: &I) -> SerialResult<()> {
         match self.load_chunk_from_region(index) {
