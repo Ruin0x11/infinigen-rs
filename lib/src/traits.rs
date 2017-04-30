@@ -84,6 +84,10 @@ pub trait ChunkedWorld<'a, I, C, M, T>
     fn unload_chunk_internal(&mut self, index: &I) -> SerialResult<C>;
 
     fn load_chunk_from_region(&mut self, index: &I) -> SerialResult<()> {
+        if self.terrain().chunk_loaded(index) {
+            return Ok(());
+        }
+
         let old_count = self.terrain().chunk_count();
         let chunk: C;
         {
