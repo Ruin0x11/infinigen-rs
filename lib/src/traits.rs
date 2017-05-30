@@ -103,7 +103,6 @@ pub trait ChunkedWorld<'a, I, C, M, T>
     }
 
     fn generate_chunk(&mut self, index: &I) -> SerialResult<()>;
-    fn update_chunks(&mut self) -> SerialResult<()>;
     fn terrain(&mut self) -> &mut T;
     fn save(self) -> SerialResult<()>;
 

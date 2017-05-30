@@ -114,7 +114,7 @@ pub trait ManagedRegion<'a, I, C>
                 .read(true)
                 .write(true)
                 .create(true)
-                .open(filename) .unwrap();
+                .open(filename).unwrap();
             file.write(&vec![0u8; Self::lookup_table_size() as usize]).unwrap();
             file
         } else {
