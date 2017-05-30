@@ -84,10 +84,14 @@ pub trait ChunkedWorld<'a, I, C, M, T>
     fn unload_chunk_internal(&mut self, index: &I) -> SerialResult<C>;
 
     fn load_chunk_from_region(&mut self, index: &I) -> SerialResult<()> {
+        if self.terrain().chunk_loaded(index) {
+            return Ok(());
+        }
+
         let old_count = self.terrain().chunk_count();
         let chunk: C;
         {
-            let region = self.terrain().regions_mut().get_for_chunk(index);
+            let region = self.terrain_mut().regions_mut().get_for_chunk(index);
             chunk = match region.read_chunk(index) {
                 Ok(c) => c,
                 Err(e) => return Err(e),
@@ -103,8 +107,9 @@ pub trait ChunkedWorld<'a, I, C, M, T>
     }
 
     fn generate_chunk(&mut self, index: &I) -> SerialResult<()>;
-    fn terrain(&mut self) -> &mut T;
-    fn save(self) -> SerialResult<()>;
+    fn terrain(&self) -> &T;
+    fn terrain_mut(&mut self) -> &mut T;
+    fn save(&mut self) -> SerialResult<()>;
 
     fn load_chunk(&mut self, index: &I) -> SerialResult<()> {
         match self.load_chunk_from_region(index) {
@@ -121,7 +126,7 @@ pub trait ChunkedWorld<'a, I, C, M, T>
 
                 // The region this chunk was created in needs to know of the chunk
                 // that was created in-game but nonexistent on disk.
-                self.terrain().regions_mut().notify_chunk_creation(index);
+                self.terrain_mut().regions_mut().notify_chunk_creation(index);
             },
             Err(e) => panic!("{:?}", e),
             Ok(()) => (),
@@ -139,7 +144,7 @@ pub trait ChunkedWorld<'a, I, C, M, T>
         assert_eq!(self.terrain().chunk_count(), old_count - 1,
                    "Chunk wasn't removed from world!");
 
-        let region = self.terrain().regions_mut().get_for_chunk(index);
+        let region = self.terrain_mut().regions_mut().get_for_chunk(index);
         region.write_chunk(chunk, index)
     }
 }
