@@ -1,6 +1,6 @@
 [package]
 name = "infinigen"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Ian Pickering <ipickering2@gmail.com>"]
 
 [dependencies]
