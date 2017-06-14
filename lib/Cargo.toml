@@ -4,7 +4,7 @@ version = "0.1.0"
 authors = ["Ian Pickering <ipickering2@gmail.com>"]
 
 [dependencies]
-serde = "0.9.13"
-serde_derive = "0.9.13"
-bincode = "0.7.0"
+serde = "1.0"
+serde_derive = "1.0"
+bincode = "0.8.0"
 flate2 = "0.2.19"

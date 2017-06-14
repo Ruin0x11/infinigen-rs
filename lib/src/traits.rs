@@ -1,7 +1,7 @@
 use std::hash::Hash;
 
 use serde::Serialize;
-use serde::de::Deserialize;
+use serde::de::DeserializeOwned;
 
 use managed_region::ManagedRegion;
 use region::*;
@@ -13,7 +13,7 @@ pub trait Index: Hash + Eq + PartialEq + Clone {
 }
 
 /// Allows the user to specify the parameters of the region fil
-pub trait ManagedChunk: Serialize + Deserialize {
+pub trait ManagedChunk: Serialize + DeserializeOwned {
        /// The number of bytes to align the saved chunk data to in the region file.
     /// Should be a power of two.
     const SECTOR_SIZE: usize = 4096;
